@@ -12,6 +12,7 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -178,5 +179,50 @@ filewrite(struct file *f, uint64 addr, int n)
   }
 
   return ret;
+}
+
+// Return the index of file f in ftable.file[].
+int
+fileidx(struct file *f)
+{
+  if(f < ftable.file || f >= ftable.file + NFILE)
+    return -1;
+  return (int)(f - ftable.file);
+}
+
+// Collect open files (ref > 0) and copyout each sysinfo_file to user buffer.
+// Returns number of open files, or -1 on copyout failure.
+int
+filecollect(uint64 addr)
+{
+  struct proc *p = myproc();
+  struct sysinfo_file sf;
+  int count = 0;
+
+  for(int i = 0; i < NFILE; i++){
+    acquire(&ftable.lock);
+    if(ftable.file[i].ref > 0){
+      memset(&sf, 0, sizeof(sf));
+      sf.idx = i;
+      sf.type = ftable.file[i].type;
+      sf.readable = ftable.file[i].readable;
+      sf.writable = ftable.file[i].writable;
+      sf.ref = ftable.file[i].ref;
+      release(&ftable.lock);
+
+      // Collect pids without holding ftable.lock to prevent deadlock
+      sf.npids = procs_using_file(&ftable.file[i], sf.pids);
+
+      uint64 dst = addr + __builtin_offsetof(struct sysinfo, files) + (uint64)count * sizeof(struct sysinfo_file);
+      if(copyout(p->pagetable, dst, (char *)&sf, sizeof(sf)) < 0)
+        return -1;
+
+      count++;
+    } else {
+      release(&ftable.lock);
+    }
+  }
+
+  return count;
 }
 

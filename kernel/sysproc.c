@@ -5,6 +5,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -90,4 +91,37 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+// Temporary weak stub: will be overridden by role C's implementation in proc.c
+int __attribute__((weak))
+proccollect(uint64 addr)
+{
+  return 0;
+}
+
+uint64
+sys_sysinfo(void)
+{
+  uint64 addr;
+  int nfile, nproc;
+  struct proc *p = myproc();
+
+  argaddr(0, &addr);
+
+  nfile = filecollect(addr);
+  if(nfile < 0)
+    return -1;
+
+  nproc = proccollect(addr);
+  if(nproc < 0)
+    return -1;
+
+  if(copyout(p->pagetable, addr + __builtin_offsetof(struct sysinfo, nfile), (char *)&nfile, sizeof(nfile)) < 0)
+    return -1;
+
+  if(copyout(p->pagetable, addr + __builtin_offsetof(struct sysinfo, nproc), (char *)&nproc, sizeof(nproc)) < 0)
+    return -1;
+
+  return 0;
 }

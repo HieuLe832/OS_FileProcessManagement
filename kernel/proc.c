@@ -693,3 +693,37 @@ procdump(void)
     printf("\n");
   }
 }
+
+// Collect pids of active processes that have file f open in ofile[].
+// Each pid is recorded at most once per process.
+int
+procs_using_file(struct file *f, int *pids)
+{
+  struct proc *p;
+  int npids = 0;
+
+  if(f == 0 || pids == 0)
+    return 0;
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if(p->state != UNUSED){
+      int pid = p->pid;
+      int found = 0;
+      for(int fd = 0; fd < NOFILE; fd++){
+        if(p->ofile[fd] == f){
+          found = 1;
+          break;
+        }
+      }
+      release(&p->lock);
+      if(found){
+        pids[npids++] = pid;
+      }
+    } else {
+      release(&p->lock);
+    }
+  }
+
+  return npids;
+}
