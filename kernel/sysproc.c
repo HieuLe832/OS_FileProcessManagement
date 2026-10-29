@@ -93,12 +93,6 @@ sys_uptime(void)
   return xticks;
 }
 
-// Temporary weak stub: will be overridden by role C's implementation in proc.c
-int __attribute__((weak))
-proccollect(uint64 addr)
-{
-  return 0;
-}
 
 uint64
 sys_sysinfo(void)

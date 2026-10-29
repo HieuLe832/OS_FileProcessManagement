@@ -1,25 +1,26 @@
 #ifndef _SYSINFO_H_
 #define _SYSINFO_H_
 
+// kernel/sysinfo.h — include sau kernel/types.h và kernel/param.h
 struct sysinfo_file {
-  int idx;          
-  int type;         
+  int idx;          // vị trí trong ftable.file[] (dùng để nối với process)
+  int type;         // FD_NONE / FD_PIPE / FD_INODE / FD_DEVICE
   int readable;
   int writable;
-  int ref;         
+  int ref;          // reference count
   int npids;
-  int pids[NPROC];
+  int pids[NPROC];  // các process đang có fd trỏ tới file này
 };
 
 struct sysinfo_proc {
   int pid;
-  int state;        
-  int ppid;         
-  int nsched;       
+  int state;        // giá trị enum procstate
+  int ppid;         // 0 nếu không có parent (init)
+  int nsched;       // số lần được scheduler chọn chạy
   char name[16];
   int nfd;
-  int fds[NOFILE];  
-  int fidx[NOFILE]; 
+  int fds[NOFILE];  // số fd
+  int fidx[NOFILE]; // file tương ứng (khớp với sysinfo_file.idx)
 };
 
 struct sysinfo {
