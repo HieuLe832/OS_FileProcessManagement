@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "sysinfo.h"
 
 struct cpu cpus[NCPU];
 
@@ -124,6 +125,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->nsched = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -463,6 +465,7 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        p->nsched++;
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
@@ -692,4 +695,59 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+// Collect information about all processes whose state is not UNUSED
+// and copy it out to user space at addr (inside struct sysinfo).
+// Returns the number of processes collected, or -1 on copyout failure.
+int
+proccollect(uint64 addr)
+{
+  struct proc *p;
+  struct sysinfo_proc sproc;
+  int count = 0;
+  struct proc *curproc = myproc();
+
+  for(p = proc; p < &proc[NPROC]; p++){
+    acquire(&wait_lock);
+    acquire(&p->lock);
+
+    if(p->state == UNUSED){
+      release(&p->lock);
+      release(&wait_lock);
+      continue;
+    }
+
+    memset(&sproc, 0, sizeof(sproc));
+    sproc.pid = p->pid;
+    sproc.state = p->state;
+    sproc.nsched = p->nsched;
+    safestrcpy(sproc.name, p->name, sizeof(sproc.name));
+
+    if(p->parent)
+      sproc.ppid = p->parent->pid;
+    else
+      sproc.ppid = 0;
+
+    int nfd = 0;
+    for(int fd = 0; fd < NOFILE; fd++){
+      if(p->ofile[fd]){
+        sproc.fds[nfd] = fd;
+        sproc.fidx[nfd] = fileidx(p->ofile[fd]);
+        nfd++;
+      }
+    }
+    sproc.nfd = nfd;
+
+    release(&p->lock);
+    release(&wait_lock);
+
+    uint64 dst = addr + __builtin_offsetof(struct sysinfo, procs) + (uint64)count * sizeof(struct sysinfo_proc);
+    if(copyout(curproc->pagetable, dst, (char *)&sproc, sizeof(sproc)) < 0)
+      return -1;
+
+    count++;
+  }
+
+  return count;
 }
