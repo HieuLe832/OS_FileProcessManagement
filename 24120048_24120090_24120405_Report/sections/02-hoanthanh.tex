@@ -1,0 +1,19 @@
+\begin{table}[h!]
+\centering
+\begin{tabularx}{\textwidth}{|X|c|c|}
+\hline
+\textbf{Yêu cầu} & \textbf{Mục} & \textbf{Trạng thái} \\ \hline
+\multicolumn{3}{|l|}{\textbf{4.1. Tìm hiểu và báo cáo}} \\ \hline
+Trường \texttt{ofile[]} của \texttt{struct proc}, \texttt{file[]} của \texttt{struct ftable} & 3.1 & Hoàn thành \\ \hline
+Trace system call \texttt{open} (luồng chính) & 3.2 & Hoàn thành \\ \hline
+So sánh cách dùng file descriptor trong \texttt{open()}, \texttt{dup()} và \texttt{fork()} & 3.3 & Hoàn thành \\ \hline
+Trace system call \texttt{fork} (luồng chính) & 3.4 & Hoàn thành \\ \hline
+Các trường \texttt{pid}, \texttt{state}, \texttt{context} của \texttt{struct proc} & 3.5 & Hoàn thành \\ \hline
+Cơ chế lập lịch trong \texttt{scheduler()}, \texttt{sched()}, \texttt{yield()} & 3.6 & Hoàn thành \\ \hline
+\multicolumn{3}{|l|}{\textbf{4.2. Cài đặt và báo cáo}} \\ \hline
+System call \texttt{sysinfo} nhận con trỏ tới \texttt{struct sysinfo} (định nghĩa trong \texttt{kernel/sysinfo.h}), thông tin được điền trong kernel rồi chép về user space & 4.1 & Hoàn thành \\ \hline
+Số open file của toàn hệ thống và danh sách kèm loại, chế độ mở, reference count, danh sách process tham chiếu tới file & 4.2 & Hoàn thành \\ \hline
+Số process có trạng thái khác \texttt{UNUSED} và danh sách kèm pid, trạng thái, pid của cha, số lần được lập lịch, danh sách open file & 4.3 & Hoàn thành \\ \hline
+Chương trình \texttt{user/sysinfotest.c} gọi \texttt{sysinfo} nhiều lần để kiểm thử nhiều kịch bản (17 kịch bản, 118 kiểm tra, tất cả đều đạt) & 6 & Hoàn thành \\ \hline
+\end{tabularx}
+\end{table}

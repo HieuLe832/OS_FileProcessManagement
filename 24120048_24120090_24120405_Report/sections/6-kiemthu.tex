@@ -1,0 +1,177 @@
+\subsection{Cách kiểm thử}
+
+Chương trình \texttt{user/sysinfotest.c} gọi \texttt{sysinfo} trước và sau mỗi thao tác (\texttt{open}, \texttt{dup}, \texttt{fork}, \texttt{exit}, \ldots) rồi so sánh hai lần chụp. Mỗi kiểm tra in một dòng \texttt{[PASS]} hoặc \texttt{[FAIL]} kèm giá trị đo được, cuối chương trình in tổng số kiểm tra đạt và không đạt. Chương trình có ba cách chạy trong shell của xv6:
+\begin{itemize}
+    \item \texttt{sysinfotest}: chạy cả 17 test;
+    \item \texttt{sysinfotest 5 8}: chỉ chạy các test được liệt kê;
+    \item \texttt{sysinfotest show}: chỉ in danh sách open file và danh sách process tại thời điểm gọi.
+\end{itemize}
+
+Ngoài các kiểm tra riêng của từng kịch bản, nhiều test còn kiểm tra hai tính chất chung của kết quả trả về. Thứ nhất, danh sách file và danh sách process phải khớp nhau: mỗi pid trong danh sách process của một file phải có fd trỏ tới file đó, và ngược lại. Thứ hai, khi không có process nào đang mở hay đóng file, \texttt{ref} của mỗi file phải bằng tổng số fd trỏ tới nó. Cuối mỗi test luôn có một kiểm tra \texttt{nfile} và \texttt{nproc} đã trở về như lúc bắt đầu, để chắc test đã dọn dẹp xong và không ảnh hưởng tới test sau.
+
+Nhóm chạy chương trình trên QEMU với 3 CPU (mặc định của \texttt{make qemu}) ba lần liên tiếp và một lần với \texttt{make qemu CPUS=1}. Cả bốn lần đều đạt 118/118 kiểm tra và kernel không panic.
+
+\subsection{Tổng hợp các kịch bản}
+
+\begin{longtable}{|c|p{4.2cm}|p{8.6cm}|c|}
+\hline
+\textbf{\#} & \textbf{Kịch bản} & \textbf{Nội dung kiểm tra chính} & \textbf{Số KT} \\ \hline
+\endhead
+1 & Trạng thái ban đầu & Có \texttt{init} (pid 1, ppid 0), \texttt{sh} đang \texttt{SLEEPING} trong \texttt{wait}, \texttt{sysinfotest} đang \texttt{RUNNING}; fd 0, 1, 2 cùng trỏ console (\texttt{DEVICE}, \texttt{rw}); hai danh sách khớp nhau & 13 \\ \hline
+2 & \texttt{open} với từng chế độ & \texttt{O\_RDONLY}, \texttt{O\_WRONLY}, \texttt{O\_RDWR} cho \texttt{INODE} với quyền \texttt{r-}, \texttt{-w}, \texttt{rw}; mở thư mục cho \texttt{INODE r-}; mở lại console cho một entry \texttt{DEVICE} mới & 10 \\ \hline
+3 & \texttt{open} một file hai lần & Hai entry khác nhau, mỗi entry \texttt{ref = 1}, offset độc lập & 6 \\ \hline
+4 & \texttt{dup} & Không thêm entry, \texttt{ref} tăng lên 2, pid chỉ có một lần, offset dùng chung & 6 \\ \hline
+5 & \texttt{fork} & \texttt{nproc} tăng 1, con có \texttt{ppid} đúng và cùng fd với cha, \texttt{ref} tăng theo số fd được chép, offset dùng chung, sau \texttt{wait} mọi thứ trở lại như cũ & 14 \\ \hline
+6 & \texttt{pipe} & Hai entry \texttt{PIPE}: đầu đọc \texttt{r-}, đầu ghi \texttt{-w} & 4 \\ \hline
+7 & \texttt{close} & Đóng một trong hai fd: \texttt{ref} giảm còn 1; đóng fd cuối: entry biến mất & 7 \\ \hline
+8 & Process \texttt{ZOMBIE} & Con đã \texttt{exit} nhưng cha chưa \texttt{wait}: trạng thái \texttt{ZOMBIE}, không còn fd; sau \texttt{wait} con biến mất, mã thoát đúng & 9 \\ \hline
+9 & Process \texttt{SLEEPING}, \texttt{kill} & Con chờ \texttt{read} trên pipe rỗng và con trong \texttt{sleep(1000)} đều \texttt{SLEEPING}; con bị \texttt{kill} thoát với mã $-1$ & 5 \\ \hline
+10 & \texttt{RUNNING} / \texttt{RUNNABLE} & 4 con chạy vòng lặp vô hạn (nhiều hơn số CPU): luôn ở \texttt{RUNNING} hoặc \texttt{RUNNABLE}, có lúc thấy \texttt{RUNNABLE}; \texttt{nsched} của mỗi con tăng dần & 5 \\ \hline
+11 & Đếm \texttt{nsched} & \texttt{nsched} của chính chương trình tăng sau \texttt{sleep}; con chờ pipe không tăng; con trong \texttt{sleep()} vẫn tăng & 4 \\ \hline
+12 & Nhiều process con & 5 con: \texttt{nproc} tăng 5, mọi con có \texttt{ppid} đúng; pipe dùng chung có \texttt{ref = 6} & 6 \\ \hline
+13 & Process mồ côi & Cha của cháu thoát trước: cháu được chuyển cho \texttt{init} (\texttt{ppid = 1}), \texttt{init} thu dọn cháu khi nó thoát & 5 \\ \hline
+14 & Giới hạn \texttt{NOFILE} & Mở tới khi \texttt{open} lỗi: process có đúng 16 fd, từ 0 tới 15 & 5 \\ \hline
+15 & Giới hạn \texttt{NFILE} & 10 process con mở file tới khi lỗi: \texttt{nfile} đạt 100; \texttt{open} lỗi do \texttt{ftable} đầy dù process còn fd trống & 6 \\ \hline
+16 & Giới hạn \texttt{NPROC} & Fork tới khi lỗi: tạo được 61 con, \texttt{nproc} đạt 64 & 4 \\ \hline
+17 & Con trỏ không hợp lệ & Địa chỉ 0 (trang code chỉ đọc), vượt \texttt{MAXVA}, trang \texttt{TRAPFRAME}, guard page của stack, buffer tràn qua cuối heap: đều trả về $-1$; buffer cấp bằng \texttt{malloc} hoạt động bình thường & 9 \\ \hline
+\multicolumn{3}{|r|}{\textbf{Tổng}} & \textbf{118} \\ \hline
+\end{longtable}
+
+\subsection{Một số kết quả tiêu biểu}
+
+Các hình dưới đây là output thật của lần chạy với 3 CPU. Dòng \texttt{...} là chỗ đã lược bớt.
+
+\textbf{Trạng thái ban đầu (test 1).} Hệ thống chỉ có một open file là console, được 3 process dùng chung với \texttt{ref = 9} (mỗi process 3 fd, xem mục 3.3). \texttt{sysinfotest} là process duy nhất đang \texttt{RUNNING}, vì nó chính là process đang gọi \texttt{sysinfo}.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 1: baseline: init, sh, sysinfotest, console ==
+  open files: 1
+    idx  type    mode  ref  pids
+    0    DEVICE  rw    9    1 2 3
+  processes: 3
+    pid  ppid  state     nsched  name          fd->idx
+    1    0     SLEEPING  24      init          0->0 1->0 2->0
+    2    1     SLEEPING  11      sh            0->0 1->0 2->0
+    3    2     RUNNING   48      sysinfotest   0->0 1->0 2->0
+  [PASS] file list and process list agree with each other
+  [PASS] ref of every file = number of fds pointing to it
+  ...
+  [PASS] state of sh (blocked in wait) = SLEEPING
+  [PASS] fd 0, 1, 2 share one struct file (init used dup)
+\end{lstlisting}
+\caption{Kết quả test 1: danh sách open file và process lúc bắt đầu}
+\end{figure}
+
+\textbf{\texttt{open} với từng chế độ (test 2).} Mỗi lần \texttt{open} tạo một entry mới với \texttt{ref = 1}; quyền đọc/ghi đúng theo chế độ mở. Mở lại \texttt{console} cho entry \texttt{DEVICE} thứ hai (idx 5), khác với entry idx 0 mà fd 0, 1, 2 đang dùng.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 2: open() with each mode, a directory and a device ==
+  open files: 6
+    idx  type    mode  ref  pids
+    0    DEVICE  rw    9    1 2 3
+    1    INODE   r-    1    3
+    2    INODE   -w    1    3
+    3    INODE   rw    1    3
+    4    INODE   r-    1    3
+    5    DEVICE  rw    1    3
+\end{lstlisting}
+\caption{Kết quả test 2: các entry do \texttt{open} tạo ra}
+\end{figure}
+
+\textbf{\texttt{fork} (test 5).} Con (pid 4) có \texttt{ppid = 3}, đúng các fd của cha và trỏ tới cùng các entry. Con đang \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được scheduler chọn lần nào.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 5: fork() ==
+  processes: 4
+    pid  ppid  state     nsched  name          fd->idx
+    1    0     SLEEPING  24      init          0->0 1->0 2->0
+    2    1     SLEEPING  11      sh            0->0 1->0 2->0
+    3    2     RUNNING   50      sysinfotest   0->0 1->0 2->0 3->1 4->2 5->3
+    4    3     RUNNABLE  0       sysinfotest   0->0 1->0 2->0 3->1 4->2 5->3
+  [PASS] nproc increase = 1
+  [PASS] nfile increase (fork creates no struct file) = 0
+  ...
+  [PASS] child has the same fds, pointing to the same struct file
+  [PASS] each file gains one ref per inherited fd, pids has parent and child
+  [PASS] console ref increase (fd 0, 1, 2 inherited) = 3
+  ...
+  [PASS] offset is shared with the child (child read 'a', parent reads 'b')
+\end{lstlisting}
+\caption{Kết quả test 5: process con ngay sau \texttt{fork}}
+\end{figure}
+
+\textbf{Process \texttt{ZOMBIE} (test 8).} Con đã gọi \texttt{exit(7)} nhưng cha chưa \texttt{wait}: ô của con vẫn còn trong bảng process ở trạng thái \texttt{ZOMBIE} và không còn fd nào, vì \texttt{exit()} đã đóng hết. Sau \texttt{wait}, ô được giải phóng và con không còn trong danh sách.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 8: ZOMBIE until wait() ==
+  processes: 4
+    pid  ppid  state     nsched  name          fd->idx
+    ...
+    3    2     RUNNING   54      sysinfotest   0->0 1->0 2->0
+    6    3     ZOMBIE    1       sysinfotest
+  [PASS] state of exited child before wait() = ZOMBIE
+  [PASS] nfd of zombie (exit closed all fds) = 0
+  ...
+  [PASS] exit status = 7
+  [PASS] after wait() the child is no longer listed
+\end{lstlisting}
+\caption{Kết quả test 8: process con ở trạng thái \texttt{ZOMBIE}}
+\end{figure}
+
+\textbf{\texttt{RUNNING}/\texttt{RUNNABLE} và \texttt{nsched} (test 10, 11).} Bốn con chạy vòng lặp vô hạn trên 3 CPU nên luôn có con phải chờ ở \texttt{RUNNABLE}. Sau mỗi lần timer ngắt, process đang chạy phải \texttt{yield()} rồi được chọn lại, nên \texttt{nsched} của các con tăng liên tục. Ngược lại, con chờ trên pipe rỗng không được đánh thức nên \texttt{nsched} đứng yên.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 10: RUNNING / RUNNABLE spinners ==
+    pid  ppid  state     nsched  name          fd->idx
+    ...
+    9    3     RUNNABLE  1       sysinfotest   0->0 1->0 2->0
+    10   3     RUNNABLE  1       sysinfotest   0->0 1->0 2->0
+    11   3     RUNNING   2       sysinfotest   0->0 1->0 2->0
+    12   3     RUNNING   1       sysinfotest   0->0 1->0 2->0
+  [PASS] spinning children are always RUNNING or RUNNABLE
+  [PASS] with more spinners than CPUs some of them wait as RUNNABLE
+         pid 9: nsched 2 -> 5
+         pid 10: nsched 1 -> 6
+  ...
+== test 11: nsched counting ==
+  [PASS] nsched of sysinfotest grows after sleep(2): 67 -> 69
+  [PASS] nsched of child blocked on a pipe does not change: 1 -> 1
+  [PASS] nsched of child in sleep() grows (woken at every tick): 1 -> 5
+\end{lstlisting}
+\caption{Kết quả test 10 và 11: trạng thái chạy và bộ đếm \texttt{nsched}}
+\end{figure}
+
+\textbf{Giới hạn của hệ thống và con trỏ không hợp lệ (test 13--17).} Process mồ côi được chuyển cho \texttt{init}. Các bảng đầy (\texttt{NOFILE}, \texttt{NFILE}, \texttt{NPROC}) vẫn được \texttt{sysinfo} trả về đầy đủ. Mọi địa chỉ user không hợp lệ đều làm \texttt{sysinfo} trả về $-1$ mà không làm hỏng kernel hay process gọi.
+
+\begin{figure}[H]
+\begin{lstlisting}[style=ketqua]
+== test 13: orphan reparented to init ==
+  [PASS] ppid of orphan (reparented to init) = 1
+  [PASS] init reaps the orphan after it exits
+== test 14: per-process limit NOFILE ==
+  [PASS] nfd of sysinfotest = 16
+== test 15: system-wide limit NFILE ==
+  [PASS] nfile (system-wide file table full) = 100
+  [PASS] open() fails because ftable is full, not because of NOFILE
+== test 16: process table full (NPROC) ==
+  [PASS] nproc (process table full) = 64
+  [PASS] children forked until fork() failed = 61
+== test 17: bad user pointers ==
+  [PASS] sysinfo(0), page 0 is read-only text = -1
+  [PASS] sysinfo(0xeaeb0b5b00002f5e), above MAXVA = -1
+  [PASS] sysinfo(TRAPFRAME), kernel-only page = -1
+  [PASS] sysinfo(stack guard page) = -1
+  [PASS] sysinfo(heap end - 16), buffer runs past the heap = -1
+  [PASS] sysinfo(buffer from malloc) = 0
+  [PASS] sysinfo(&global) still works afterwards = 0
+
+sysinfotest: 118 passed, 0 failed
+sysinfotest: OK
+\end{lstlisting}
+\caption{Kết quả test 13--17 và tổng kết (đã lược bớt một số dòng)}
+\end{figure}

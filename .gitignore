@@ -1,0 +1,18 @@
+kernel/
+mkfs/
+user/
+CLAUDE.md
+fs.img
+*.pdf
+*.md
+# LaTeX build output
+*.aux
+*.log
+*.toc
+*.out
+*.bbl
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+_minted*/

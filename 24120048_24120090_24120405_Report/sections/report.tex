@@ -1,0 +1,57 @@
+% KHUNG BÁO CÁO – không cần sửa tệp này.
+% Mỗi \phan / \gop chèn tệp tương ứng trong sections/ nếu tệp đã có,
+% chưa có thì hiện dòng chữ đỏ nhắc tên tệp (xem hướng dẫn đầu main.tex).
+
+\section{Thông tin nhóm và Phân công công việc}
+\phan{01-phancong}{B}
+
+\section{Mức độ hoàn thành}
+\phan{02-hoanthanh}{B}
+
+\section{Tìm hiểu mã nguồn xv6}
+
+\subsection{Trường \texttt{ofile[]} của \texttt{struct proc} và \texttt{file[]} của \texttt{ftable}}
+\phan{31-ofile-ftable}{A}
+
+\subsection{Trace system call \texttt{open}}
+\phan{32-open}{A}
+
+\subsection{So sánh cách dùng file descriptor trong \texttt{open()}, \texttt{dup()} và \texttt{fork()}}
+\phan{33-fd-compare}{B}
+
+\subsection{Trace system call \texttt{fork}}
+\phan{34-fork}{B}
+
+\subsection{Các trường \texttt{pid}, \texttt{state}, \texttt{context} của \texttt{struct proc}}
+\phan{35-proc-fields}{C}
+
+\subsection{Cơ chế lập lịch: \texttt{scheduler()}, \texttt{sched()}, \texttt{yield()}}
+\phan{36-scheduler}{C}
+
+\section{Cài đặt system call \texttt{sysinfo}}
+
+\subsection{Cấu trúc \texttt{struct sysinfo} và luồng gọi}
+\phan{41-struct}{A}
+
+\subsection{Thu thập danh sách open file}
+\phan{42-files}{A}
+
+\subsection{Thu thập danh sách process và bộ đếm \texttt{nsched}}
+\phan{43-procs}{C}
+
+\subsection{Danh sách các file đã sửa đổi}
+\gop{itemize}{44-files}
+
+\section{Lựa chọn thiết kế và giả định}
+\gop{itemize}{5-thietke}
+
+\section{Kết quả kiểm thử}
+\phan{6-kiemthu}{B}
+
+\section{Khó khăn và các cách đã thử}
+\gop{dsso}{7-khokhan}
+
+\section{Những khái niệm chưa hiểu rõ}
+\gop{dsso}{8-chuahieu}
+
+\nocite{*}

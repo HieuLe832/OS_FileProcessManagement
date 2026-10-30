@@ -1,0 +1,234 @@
+% =====================================================================
+% BÁO CÁO ĐỒ ÁN 1 – File & Process Management
+%
+% Cách dùng khung:
+%   - sections/report.tex là KHUNG: đã có sẵn mọi \section/\subsection.
+%     Không cần sửa khung, chỉ cần thả tệp của mình vào thư mục sections/.
+%   - Tệp chưa có thì báo cáo vẫn biên dịch được, chỗ đó hiện dòng chữ đỏ
+%     ghi tên tệp còn thiếu. Thả tệp vào là nội dung tự xuất hiện.
+%   - Tệp chỉ chứa NỘI DUNG, không viết lại tiêu đề mục (khung đã có).
+%     Muốn chia nhỏ thì dùng \subsubsection.
+%   - Mục 4.4, 5, 7, 8 cả ba người cùng viết: mỗi người một tệp
+%     <tên>-A.tex / -B.tex / -C.tex, CHỈ chứa các dòng \item ...
+%     (không có \begin{itemize}); khung tự gộp thành một danh sách.
+%   - Hình đặt trong images/, nên đặt tên có tiền tố theo mục,
+%     ví dụ images/32-open-flow.png. Tài liệu tham khảo thêm vào refs.bib.
+%
+%   Tệp                          Người viết
+%   01-phancong, 02-hoanthanh    B
+%   31-ofile-ftable, 32-open     A
+%   33-fd-compare, 34-fork       B
+%   35-proc-fields, 36-scheduler C
+%   41-struct, 42-files          A
+%   43-procs                     C
+%   6-kiemthu                    B
+%   44-files-X, 5-thietke-X,
+%   7-khokhan-X, 8-chuahieu-X    mỗi người (X = A, B, C)
+% =====================================================================
+\documentclass[a4paper]{article}
+\usepackage{vntex}
+\usepackage{pdflscape}
+\usepackage{rotating}
+\usepackage{a4wide,amssymb,epsfig,latexsym,multicol,array,hhline,fancyhdr}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{float}
+\usepackage{lastpage} 
+% \usepackage[lined,boxed,commentsnumbered]{algorithm2e}
+\usepackage{enumerate}
+\usepackage{color}
+\usepackage{graphicx}					% Standard graphics package
+\usepackage{array}
+\usepackage{tabularx, caption}
+\usepackage{multirow}
+\usepackage[framemethod=tikz]{mdframed}% For highlighting paragraph backgrounds
+\usepackage{multicol}
+\usepackage{rotating}
+\usepackage{graphics}
+\usepackage{wrapfig}
+\usepackage{geometry}
+\usepackage{setspace}
+\usepackage{epsfig}
+\usepackage{tikz}
+\usepackage{listings}
+\usetikzlibrary{arrows,snakes,backgrounds}
+\usepackage{hyperref}
+\usepackage{minted}
+\usepackage{indentfirst}
+\usepackage{cases} 
+\usepackage{listings}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage[english]{babel}
+\renewcommand{\baselinestretch}{1.5}
+\usepackage{xcolor}
+\renewcommand{\figurename}{Hình}
+
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usepackage{geometry}
+% Header và footer được tính vào vùng nội dung (includehead/includefoot),
+% nên lề 4 phía được đo từ mép ngoài của header/footer và chúng không tràn ra khỏi trang.
+\geometry{a4paper, left=2cm, right=2cm, top=1cm, bottom=1.5cm,
+          includehead, includefoot, headheight=55pt, headsep=10pt, footskip=30pt}
+
+\lstset{
+    language=C++,
+    basicstyle=\ttfamily\footnotesize,
+    numbers=left,
+    numberstyle=\tiny,
+    stepnumber=1,
+    numbersep=5pt,
+    backgroundcolor=\color{gray!10},
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red},
+    frame=single,
+    breaklines=true,
+}
+
+%%%%%%%%
+\usepackage{longtable}
+\usepackage[shortlabels]{enumitem}
+\hypersetup{urlcolor=blue,linkcolor=black,citecolor=black,colorlinks=true} 
+
+\pagestyle{fancy}
+\fancyhead{} % clear all header fields
+\fancyhead[L]{
+ \begin{tabular}{rl}
+    \begin{picture}(25,15)(0,0)
+    \put(0,-16){\includegraphics[width=15mm, height=15mm]{images/khtn.png}}
+    \end{picture}&
+	\begin{tabular}{l}
+		\textbf{\Large \ttfamily Trường đại học Khoa Học Tự Nhiên, ĐHQG HCM}\\
+		\textbf{\Large \ttfamily Khoa Công Nghệ Thông Tin}
+	\end{tabular}  	
+ \end{tabular}
+}
+\fancyhead[R]{
+	\begin{tabular}{l}
+		\tiny \bf \\
+		\tiny \bf 
+	\end{tabular}  }
+\fancyfoot{} % clear all footer fields
+\fancyfoot[L]{\Large \ttfamily Hệ điều hành}
+\fancyfoot[R]{\large \ttfamily Trang {\thepage}/\pageref{LastPage}}
+\renewcommand{\headrulewidth}{0.3pt}
+\renewcommand{\footrulewidth}{0.3pt}
+
+
+%%%
+\setcounter{secnumdepth}{4}
+\setcounter{tocdepth}{3}
+\makeatletter
+\newcounter {subsubsubsection}[subsubsection]
+\renewcommand\thesubsubsubsection{\thesubsubsection .\@alph\c@subsubsubsection}
+\newcommand\subsubsubsection{\@startsection{subsubsubsection}{4}{\z@}%
+                                     {-3.25ex\@plus -1ex \@minus -.2ex}%
+                                     {1.5ex \@plus .2ex}%
+                                     {\normalfont\normalsize\bfseries}}
+\newcommand*\l@subsubsubsection{\@dottedtocline{3}{10.0em}{4.1em}}
+\newcommand*{\subsubsubsectionmark}[1]{}
+\makeatother
+
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+
+\lstset{frame=tb,
+	language=Matlab,
+	aboveskip=3mm,
+	belowskip=3mm,
+	showstringspaces=false,
+	columns=flexible,
+	basicstyle={\small\ttfamily},
+	numbers=none,
+	numberstyle=\tiny\color{gray},
+	keywordstyle=\color{blue},
+	commentstyle=\color{dkgreen},
+	stringstyle=\color{mauve},
+	breaklines=true,
+	breakatwhitespace=true,
+	tabsize=3,
+	numbers=left,
+	stepnumber=1,
+	numbersep=1pt,    
+	firstnumber=1,
+	numberfirstline=true
+}
+
+\newcolumntype{C}[1]{>{\centering\arraybackslash}p{#1}}
+
+% Khung chữ cho output in ra từ terminal của xv6.
+\lstdefinestyle{ketqua}{
+	language={},
+	basicstyle=\ttfamily\scriptsize,
+	backgroundcolor=\color{gray!10},
+	frame=single,
+	numbers=none,
+	columns=fixed,
+	keepspaces=true,
+	showstringspaces=false,
+	breaklines=false,
+	aboveskip=1mm,
+	belowskip=1mm
+}
+
+%%% Khung báo cáo: chèn tệp của từng thành viên %%%
+\newcommand{\nguoiA}{A (Đinh Tiến Phát)}
+\newcommand{\nguoiB}{B (Lê Hoàng Hiếu)}
+\newcommand{\nguoiC}{C (Đặng Hồng Minh)}
+
+% Dòng nhắc khi tệp chưa có: \chuaco{tên tệp}{người viết}
+\newcommand{\chuaco}[2]{{\color{red}\textbf{[Chưa có nội dung]} Phần của #2, thêm tệp \texttt{sections/#1.tex}.}}
+
+% \phan{tên tệp}{A|B|C}: chèn sections/<tên tệp>.tex nếu đã có.
+\newcommand{\phan}[2]{%
+	\IfFileExists{sections/#1.tex}%
+		{\input{sections/#1.tex}}%
+		{\par\noindent\chuaco{#1}{\csname nguoi#2\endcsname}\par}}
+
+% \gop{itemize|dsso}{tên}: gộp các dòng \item trong sections/<tên>-A.tex,
+% -B.tex, -C.tex thành một danh sách (dsso = danh sách đánh số).
+\newlist{dsso}{enumerate}{1}
+\setlist[dsso]{label=\textbf{\arabic*.}}
+\newcommand{\gopmot}[2]{%
+	\IfFileExists{sections/#1-#2.tex}%
+		{\input{sections/#1-#2.tex}}%
+		{\item \chuaco{#1-#2}{\csname nguoi#2\endcsname}}}
+\newcommand{\gop}[2]{%
+	\begin{#1}\gopmot{#2}{A}\gopmot{#2}{B}\gopmot{#2}{C}\end{#1}}
+
+\begin{document}
+
+\include{sections/title}
+
+\thispagestyle{empty}
+
+\newpage
+\renewcommand{\contentsname}{Mục lục}
+\renewcommand{\tablename}{Bảng}
+\renewcommand{\figurename}{Hình}
+\renewcommand{\refname}{Tài liệu tham khảo}
+
+\tableofcontents
+
+\newpage
+
+\renewcommand{\arraystretch}{1.3} % Adjust row height
+\setcounter{page}{1}
+
+
+
+\input{sections/report}
+
+
+\newpage    % Để phần tài liệu tham khảo qua trang mới
+% \thispagestyle{empty}  % trang của phần tài liệu tham khảo để trống
+\bibliographystyle{ieeetr}
+\bibliography{refs}
+
+\end{document}
+

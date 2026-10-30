@@ -1,0 +1,11 @@
+\item \textbf{Process con đang \texttt{sleep()} luôn bị thấy ở trạng thái \texttt{RUNNABLE}:}
+\begin{itemize}
+    \item \textit{Hiện tượng:} Ở phiên bản đầu, test 9 báo \texttt{child blocked in sleep(1000) = RUNNABLE (expected SLEEPING)}, dù chương trình đã chờ tới 100 lần. Con chờ \texttt{read()} trên pipe thì vẫn được thấy \texttt{SLEEPING} bình thường.
+    \item \textit{Phân tích:} Vòng chờ lúc đó gọi \texttt{sysinfo} rồi \texttt{sleep(1)}. \texttt{sys\_sleep} ngủ trên kênh \texttt{\&ticks}, và mỗi tick \texttt{clockintr()} gọi \texttt{wakeup(\&ticks)}, đánh thức mọi process đang ngủ trên kênh này, gồm cả cha lẫn con. Cha vừa thức dậy là gọi \texttt{sysinfo} ngay, đúng lúc con cũng vừa bị đánh thức để kiểm tra lại số tick, nên lần nào con cũng đang \texttt{RUNNABLE} hoặc \texttt{RUNNING}.
+    \item \textit{Giải quyết:} Vòng chờ gọi \texttt{sysinfo} liên tục, không ngủ, và giới hạn thời gian bằng \texttt{uptime()}. Từ lỗi này nhóm hiểu thêm: process trong \texttt{sleep(n)} thực ra được đưa lên CPU lại ở mỗi tick, nên \texttt{nsched} của nó vẫn tăng (test 11: từ 1 lên 5 sau 5 tick). Process chờ trên pipe chỉ được đánh thức khi có dữ liệu nên \texttt{nsched} đứng yên.
+\end{itemize}
+
+\item \textbf{Máy không có sẵn trình biên dịch RISC-V và QEMU:}
+\begin{itemize}
+    \item \textit{Giải quyết:} Nhóm dựng một Docker image Ubuntu 24.04 có \texttt{gcc-riscv64-linux-gnu} và \texttt{qemu-system-misc}, mount thư mục mã nguồn vào để \texttt{make qemu}. Nhóm dùng thêm \texttt{expect} để tự động gõ \texttt{sysinfotest} vào shell của xv6, nhờ vậy chạy lại toàn bộ test nhiều lần (3 lần với 3 CPU, 1 lần với \texttt{CPUS=1}) để chắc kết quả không phụ thuộc thời điểm chạy.
+\end{itemize}
