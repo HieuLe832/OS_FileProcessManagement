@@ -1,0 +1,9 @@
+\item \textbf{\texttt{kernel/syscall.h}, \texttt{kernel/syscall.c}, \texttt{user/usys.pl}, \texttt{user/user.h}:} Đăng ký system call mới \texttt{sysinfo}: định nghĩa mã số \texttt{SYS\_sysinfo} (22) trong \texttt{syscall.h}; khai báo ngoại vi \texttt{extern uint64 sys\_sysinfo(void);} và đăng ký phần tử \texttt{[SYS\_sysinfo] sys\_sysinfo} vào bảng con trỏ hàm \texttt{syscalls[]} trong \texttt{syscall.c}; thêm chỉ thị \texttt{entry("sysinfo");} vào \texttt{usys.pl} để Perl script tự động sinh mã stub hợp ngữ (\texttt{li a7, SYS\_sysinfo; ecall; ret}) vào \texttt{usys.S}; khai báo trước cấu trúc \texttt{struct sysinfo;} và prototype phía user \texttt{int sysinfo(struct sysinfo *);} trong \texttt{user.h}.
+
+\item \textbf{\texttt{Makefile}:} Bổ sung mục tiêu biên dịch \texttt{\$U/\_sysinfotest} vào danh sách chương trình người dùng \texttt{UPROGS} trong khối điều kiện \texttt{ifeq (\$(LAB),syscall)}.
+
+\item \textbf{\texttt{kernel/proc.h}, \texttt{kernel/proc.c}:} Thêm trường \texttt{int nsched;} vào cấu trúc \texttt{struct proc} (vùng dữ liệu được bảo vệ bởi spinlock \texttt{p->lock}); nạp thư viện \texttt{\#include "sysinfo.h"}; khởi tạo \texttt{p->nsched = 0;} trong \texttt{allocproc()}; tăng bộ đếm \texttt{p->nsched++;} trong \texttt{scheduler()} ngay trước khi thực hiện \texttt{swtch()}; hiện thực hàm \texttt{int proccollect(uint64 addr)} thu thập thông tin các tiến trình khác \texttt{UNUSED} và copyout từng phần tử \texttt{struct sysinfo\_proc} ra không gian người dùng.
+
+\item \textbf{\texttt{kernel/defs.h}:} Khai báo nguyên mẫu hàm \texttt{int proccollect(uint64);} trong nhóm \texttt{proc.c} và \texttt{int fileidx(struct file*);} trong nhóm \texttt{file.c}.
+
+\item \textbf{\texttt{kernel/sysinfo.h}:} Cập nhật toàn bộ cấu trúc dữ liệu theo đúng đặc tả thống nhất của nhóm (\texttt{struct sysinfo\_file}, \texttt{struct sysinfo\_proc}, \texttt{struct sysinfo}).

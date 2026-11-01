@@ -1,0 +1,79 @@
+Hệ điều hành xv6 triển khai giải thuật lập lịch luân phiên Round-Robin trên từng lõi CPU. Mỗi lõi CPU sở hữu một kernel thread riêng biệt thực thi hàm \texttt{scheduler()} (\texttt{kernel/proc.c}), độc lập hoàn toàn với các luồng kernel của các tiến trình người dùng.
+
+\subsubsection{Hàm \texttt{scheduler()} -- Vòng lặp điều phối của CPU}
+Mỗi CPU sau khi hoàn tất khởi tạo ở \texttt{main.c} sẽ nhảy vào \texttt{scheduler()} và không bao giờ thoát ra (\texttt{\_\_attribute\_\_((noreturn))}):
+\begin{enumerate}
+    \item CPU bật ngắt (\texttt{intr\_on()}) ở đầu vòng lặp để tránh deadlock trong trường hợp tất cả tiến trình đều đang chờ ngắt thiết bị I/O.
+    \item CPU duyệt qua bảng \texttt{proc[0 \dots NPROC-1]}. Với mỗi tiến trình, CPU lấy khóa \texttt{acquire(\&p->lock)}.
+    \item Nếu phát hiện \texttt{p->state == RUNNABLE}:
+    \begin{itemize}
+        \item Đổi trạng thái tiến trình sang thực thi: \texttt{p->state = RUNNING}.
+        \item Ghi nhận tiến trình đang chạy trên CPU hiện tại: \texttt{c->proc = p}.
+        \item Tăng bộ đếm số lần được lập lịch: \texttt{p->nsched++}.
+        \item Thực hiện chuyển ngữ cảnh bằng hàm \texttt{swtch(\&c->context, \&p->context)}. Tại thời điểm này, CPU lưu trữ thanh ghi hiện tại của scheduler vào \texttt{c->context} và nạp thanh ghi của \texttt{p->context} để bắt đầu chạy luồng của tiến trình.
+        \item Khi tiến trình từ bỏ CPU và quay lại scheduler (sau khi kết thúc \texttt{swtch} từ phía tiến trình), scheduler đặt lại \texttt{c->proc = 0}.
+    \end{itemize}
+    \item CPU giải phóng khóa \texttt{release(\&p->lock)} và tiếp tục vòng lặp kiểm tra tiến trình tiếp theo.
+    \item Nếu duyệt hết bảng mà không có tiến trình nào khả dụng (\texttt{found == 0}), CPU thực hiện lệnh hợp ngữ \texttt{wfi} (Wait For Interrupt) để tạm dừng tiêu thụ điện năng cho tới khi có ngắt phần cứng xuất hiện.
+\end{enumerate}
+
+\subsubsection{Hàm \texttt{sched()} và các điều kiện kiểm tra \texttt{panic}}
+Hàm \texttt{sched()} là cổng duy nhất để một tiến trình kernel trả quyền điều khiển về cho luồng \texttt{scheduler()} của CPU. Hàm này thực hiện hàng loạt kiểm tra phòng vệ nghiêm ngặt:
+\begin{lstlisting}[language=C]
+void sched(void) {
+  int intena;
+  struct proc *p = myproc();
+
+  if(!holding(&p->lock))
+    panic("sched p->lock");
+  if(mycpu()->noff != 1)
+    panic("sched locks");
+  if(p->state == RUNNING)
+    panic("sched running");
+  if(intr_get())
+    panic("sched interruptible");
+
+  intena = mycpu()->intena;
+  swtch(&p->context, &mycpu()->context);
+  mycpu()->intena = intena;
+}
+\end{lstlisting}
+
+\paragraph{Ý nghĩa của từng điều kiện \texttt{panic}:}
+\begin{itemize}
+    \item \textbf{\texttt{!holding(\&p->lock)}}: Bắt buộc phải giữ khóa \texttt{p->lock}. Khóa này bảo vệ trạng thái của tiến trình khỏi các CPU khác khi tiến trình chuyển sang \texttt{RUNNABLE}, \texttt{SLEEPING} hoặc \texttt{ZOMBIE}. Nếu không giữ khóa, một CPU khác có thể lập tức phát hiện và chạy tiến trình trước khi lệnh \texttt{swtch()} kịp hoàn tất việc lưu ngữ cảnh.
+    \item \textbf{\texttt{mycpu()->noff != 1}}: Tiến trình chỉ được phép giữ \textbf{duy nhất 1 khóa} là \texttt{p->lock} (\texttt{noff} là độ sâu lồng nhau của các lệnh \texttt{push\_off()}, tức số lượng spinlock đang nắm giữ). Nếu tiến trình đang giữ thêm khóa khác (ví dụ khóa đĩa, khóa file, \texttt{wait\_lock}) mà nhường CPU, các tiến trình khác cần khóa đó sẽ bị nghẽn (spinning) vô hạn, dẫn đến nguy cơ deadlock toàn hệ thống.
+    \item \textbf{\texttt{p->state == RUNNING}}: Trước khi gọi \texttt{sched()}, tiến trình bắt buộc phải chuyển trạng thái sang một giá trị khác (\texttt{RUNNABLE} trong \texttt{yield()}, \texttt{SLEEPING} trong \texttt{sleep()}, hoặc \texttt{ZOMBIE} trong \texttt{exit()}). Nếu vẫn giữ trạng thái \texttt{RUNNING}, việc nhường CPU là vô nghĩa và biểu hiện lỗi luận lý trong kernel.
+    \item \textbf{\texttt{intr\_get()}}: Ngắt phần cứng trên CPU phải đang bị tắt. Điều này được đảm bảo tự động bởi cơ chế \texttt{push\_off()} khi lấy \texttt{p->lock}. Việc tắt ngắt giúp đảm bảo chuỗi thao tác lưu ngữ cảnh và chuyển luồng diễn ra nguyên tử, không bị gián đoạn giữa chừng bởi ngắt timer hay ngắt ngoại vi.
+\end{itemize}
+
+\subsubsection{Hàm \texttt{yield()} và Ngắt thời gian (Timer Interrupt)}
+\begin{itemize}
+    \item \textbf{Cơ chế hoạt động:}
+    \begin{lstlisting}[language=C]
+    void yield(void) {
+      struct proc *p = myproc();
+      acquire(&p->lock);
+      p->state = RUNNABLE;
+      sched();
+      release(&p->lock);
+    }
+    \end{lstlisting}
+    \item \textbf{Kích hoạt:} Hàm \texttt{yield()} được gọi tự động khi hết quantum thời gian. Phần cứng bộ đếm thời gian (CLINT/ACLINT timer) định kỳ kích hoạt ngắt phần cứng. Tại \texttt{usertrap()} hoặc \texttt{kerneltrap()} (\texttt{kernel/trap.c}), biến \texttt{which\_dev} được kiểm tra:
+    \begin{lstlisting}[language=C]
+    if(which_dev == 2) // Timer interrupt
+      yield();
+    \end{lstlisting}
+    Nhờ cơ chế này, một tiến trình chạy vòng lặp vô hạn ở user space cũng không thể độc chiếm CPU; hệ điều hành có thể cướp quyền điều khiển (preemptive multitasking) để nhường lượt cho các tiến trình khác.
+\end{itemize}
+
+\subsubsection{Cơ chế chuyển giao khóa \texttt{p->lock} qua \texttt{swtch}}
+Một trong những điểm tinh vi nhất trong thiết kế đồng bộ của xv6 là cơ chế \textbf{chuyển giao khóa bất đối xứng qua ranh giới luồng thực thi}:
+\begin{itemize}
+    \item Thông thường trong lập trình đồng thời, một khóa được \texttt{acquire()} và \texttt{release()} trong cùng một hàm và cùng một luồng. Tuy nhiên đối với \texttt{p->lock}:
+    \begin{itemize}
+        \item \textbf{Chiều từ Scheduler sang Process:} Luồng \texttt{scheduler()} gọi \texttt{acquire(\&p->lock)} (dòng 461 trong mã nguồn \texttt{kernel/proc.c}), thiết lập \texttt{p->state = RUNNING}, rồi gọi \texttt{swtch(\&c->context, \&p->context)}. Lúc này luồng của tiến trình \texttt{p} tiếp tục chạy từ vị trí nó đã dừng trước đó (hoặc từ \texttt{forkret()}). Chính \textbf{luồng của tiến trình \texttt{p}} sẽ chịu trách nhiệm gọi \texttt{release(\&p->lock)} (ví dụ trong \texttt{yield()} dòng 520, hoặc trong \texttt{forkret()} dòng 532).
+        \item \textbf{Chiều từ Process sang Scheduler:} Khi tiến trình muốn nhường CPU (trong \texttt{yield()}, \texttt{sleep()} hay \texttt{exit()}), chính \textbf{tiến trình \texttt{p}} gọi \texttt{acquire(\&p->lock)}, đổi trạng thái, rồi gọi \texttt{swtch(\&p->context, \&c->context)}. Ngay sau khi \texttt{swtch} hoàn tất việc chuyển giao trở lại luồng scheduler, chính \textbf{luồng scheduler} sẽ thực hiện \texttt{release(\&p->lock)} (dòng 475).
+    \end{itemize}
+    \item \textbf{Mục đích kiến trúc:} Cơ chế này đảm bảo rằng trạng thái của tiến trình \texttt{p} luôn được bảo vệ liên tục, xuyên suốt quá trình chuyển giao ngữ cảnh giữa hai lõi CPU khác nhau, ngăn chặn hoàn toàn tình huống một CPU khác can thiệp vào tiến trình khi nó đang trong quá trình chuyển đổi dở dang.
+\end{itemize}
