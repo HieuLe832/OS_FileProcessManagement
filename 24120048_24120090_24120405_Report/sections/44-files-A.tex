@@ -1,0 +1,10 @@
+\item \textbf{\texttt{kernel/sysinfo.h}:} Thiết kế và định nghĩa các cấu trúc \texttt{struct sysinfo\_file}, \texttt{struct sysinfo\_proc} và \texttt{struct sysinfo} theo đúng đặc tả thống nhất của nhóm.
+
+\item \textbf{\texttt{kernel/defs.h}:} Khai báo nguyên mẫu các hàm mới gồm \texttt{int filecollect(uint64);}, \texttt{int fileidx(struct file*);}, và \texttt{int procs\_using\_file(struct file*, int*);}.
+
+\item \textbf{\texttt{kernel/file.c}:} Bổ sung \texttt{\#include "sysinfo.h"}, cài đặt hàm \texttt{int fileidx(struct file *f)} chuyển đổi con trỏ file sang chỉ số ô trong \texttt{ftable.file[]}, và hàm \texttt{int filecollect(uint64 addr)} thu thập danh sách open file có \texttt{ref > 0}, copyout từng phần tử \texttt{struct sysinfo\_file} ra buffer người dùng.
+
+\item \textbf{\texttt{kernel/proc.c}:} Cài đặt hàm \texttt{int procs\_using\_file(struct file *f, int *pids)} duyệt mảng \texttt{proc[]}, quét danh sách \texttt{ofile[]} dưới \texttt{p->lock} để thu thập danh sách PID các tiến trình đang mở file \texttt{f} (mỗi tiến trình chỉ lưu 1 lần dù có nhiều fd trỏ tới file).
+
+\item \textbf{\texttt{kernel/sysproc.c}:} Bổ sung \texttt{\#include "sysinfo.h"}, cài đặt hàm xử lý system call \texttt{sys\_sysinfo()} lấy địa chỉ user từ thanh ghi đối số qua \texttt{argaddr()}, gọi \texttt{filecollect(addr)} và \texttt{proccollect(addr)}, sau đó copyout hai giá trị \texttt{nfile} và \texttt{nproc} vào đầu cấu trúc. Bổ sung hàm weak stub \texttt{proccollect()} hỗ trợ biên dịch và kiểm thử độc lập cho vai A.
+

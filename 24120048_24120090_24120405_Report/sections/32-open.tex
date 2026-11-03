@@ -1,0 +1,99 @@
+Lời gọi hệ thống \texttt{open()} là một trong những syscall phức tạp và cốt lõi nhất của hệ thống quản lý tập tin trong xv6. Luồng thực thi chuyển tiếp qua nhiều tầng từ user space, trap handling, VFS cho đến disk log transaction.
+
+\subsubsection{Từ User Space đến Kernel Entry}
+
+\begin{enumerate}
+    \item \textbf{Khởi tạo từ chương trình người dùng}: Chương trình thực hiện lời gọi hàm thư viện:
+    \begin{lstlisting}[language=C]
+    int fd = open("test.txt", O_CREATE | O_RDWR);
+    \end{lstlisting}
+    \item \textbf{User Trap Stub (\texttt{user/usys.S})}: Đoạn mã hợp ngữ được sinh tự động bởi \texttt{usys.pl} nạp số hiệu syscall vào thanh ghi \texttt{a7} và kích hoạt ngắt mềm:
+    \begin{lstlisting}
+    li a7, SYS_open   # SYS_open = 15 (kernel/syscall.h)
+    ecall             # Chuyen dac quyen tu U-mode sang S-mode
+    \end{lstlisting}
+    \item \textbf{Trampoline và Trap Handling (\texttt{kernel/trampoline.S} và \texttt{kernel/trap.c})}:
+    \begin{itemize}
+        \item Lệnh \texttt{ecall} chuyển CPU sang Supervisor mode, lưu địa chỉ kế tiếp vào thanh ghi \texttt{sepc} và nhảy đến địa chỉ vector ngắt tại trang \texttt{trampoline}.
+        \item Hàm \texttt{uservec} lưu trữ toàn bộ các thanh ghi người dùng vào trang \texttt{p->trapframe}, chuyển con trỏ ngăn xếp sang kernel stack của tiến trình và gọi hàm \texttt{usertrap()}.
+        \item Trong \texttt{usertrap()}, kernel kiểm tra nguyên nhân ngắt qua \texttt{r\_scause() == 8} (mã nguyên nhân gọi syscall từ User mode), tăng \texttt{p->trapframe->epc += 4} để khi quay lại user mode sẽ tiếp tục tại lệnh kế tiếp sau \texttt{ecall}, sau đó gọi \texttt{syscall()}.
+    \end{itemize}
+    \item \textbf{Điều phối Syscall (\texttt{kernel/syscall.c})}:
+    \begin{itemize}
+        \item Hàm \texttt{syscall()} trích xuất số hiệu syscall từ \texttt{p->trapframe->a7}.
+        \item Hệ thống gọi con trỏ hàm tương ứng trong mảng \texttt{syscalls[SYS\_open]}, kích hoạt hàm \texttt{sys\_open()} trong \texttt{kernel/sysfile.c}.
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Luồng xử lý chính trong \texttt{sys\_open()}}
+
+Toàn bộ logic cốt lõi của việc mở tập tin diễn ra trong hàm \texttt{sys\_open()} (\texttt{kernel/sysfile.c:305}):
+
+\begin{enumerate}
+    \item \textbf{Lấy tham số từ không gian người dùng}:
+    \begin{itemize}
+        \item \texttt{argint(1, \&omode)}: Lấy giá trị cờ mở tập tin từ thanh ghi \texttt{a1}.
+        \item \texttt{argstr(0, path, MAXPATH)}: Đọc chuỗi đường dẫn từ địa chỉ user chỉ định trong thanh ghi \texttt{a0} và sao chép vào bộ đệm \texttt{path} trong kernel space. Nếu chuỗi không hợp lệ hoặc vượt quá \texttt{MAXPATH} (128 bytes), trả về $-1$.
+    \end{itemize}
+    \item \textbf{Bắt đầu giao dịch nhật ký (File System Log Transaction)}:
+    \begin{itemize}
+        \item Gọi \texttt{begin\_op()} để bắt đầu một giao dịch nhật ký với hệ thống tập tin, đảm bảo tính nguyên tử (atomicity) khi tạo mới tệp hoặc cắt ngắn kích thước (truncate).
+    \end{itemize}
+    \item \textbf{Tìm kiếm hoặc tạo mới Inode}:
+    \begin{itemize}
+        \item \textbf{Trường hợp có cờ \texttt{O\_CREATE}}: Gọi hàm \texttt{create(path, T\_FILE, 0, 0)}. Hàm này sẽ phân giải thư mục cha, tìm kiếm tên tệp trong thư mục. Nếu chưa tồn tại, hàm cấp phát một inode mới từ đĩa (\texttt{ialloc()}), tạo mục thư mục liên kết (\texttt{dirlink()}) và trả về con trỏ inode đã được khóa (\texttt{ilock}).
+        \item \textbf{Trường hợp không có cờ \texttt{O\_CREATE}}: Gọi \texttt{namei(path)} để phân giải đường dẫn thành một con trỏ \texttt{struct inode *ip}. Sau đó gọi \texttt{ilock(ip)} để đọc thông tin tệp từ đĩa vào RAM và thiết lập khóa loại trừ.
+        \item \textbf{Kiểm tra tệp thư mục}: Nếu $\texttt{ip->type} == \texttt{T\_DIR}$ nhưng chế độ mở $\texttt{omode} \neq \texttt{O\_RDONLY}$, xv6 từ chối mở vì thư mục chỉ được phép đọc.
+    \end{itemize}
+    \item \textbf{Kiểm tra tính hợp lệ của tệp thiết bị}:
+    \begin{itemize}
+        \item Nếu $\texttt{ip->type} == \texttt{T\_DEVICE}$, kernel kiểm tra chỉ số \texttt{major} của thiết bị xem có nằm trong khoảng hợp lệ $[0, \texttt{NDEV})$ hay không.
+    \end{itemize}
+    \item \textbf{Cấp phát tài nguyên tập tin}:
+    \begin{itemize}
+        \item \textbf{Cấp phát \texttt{struct file}}: Gọi \texttt{filealloc()} để tìm một vị trí còn trống ($\texttt{ref} == 0$) trong \texttt{ftable.file[]}. Nếu thành công, trường \texttt{ref} được gán thành $1$.
+        \item \textbf{Cấp phát File Descriptor}: Gọi \texttt{fdalloc(f)} để quét mảng \texttt{p->ofile[]} từ chỉ số 0 đến $\texttt{NOFILE}-1$. Ô đầu tiên có giá trị \texttt{0} sẽ được gán bằng \texttt{f}, và chỉ số \texttt{fd} này sẽ được giữ lại.
+    \end{itemize}
+    \item \textbf{Khởi tạo cấu trúc \texttt{struct file}}:
+    \begin{itemize}
+        \item Thiết lập kiểu: $\texttt{f->type} = \texttt{FD\_DEVICE}$ (nếu là thiết bị) hoặc $\texttt{FD\_INODE}$ (nếu là tệp thường).
+        \item Đặt con trỏ offset ban đầu: $\texttt{f->off} = 0$.
+        \item Gán con trỏ inode: $\texttt{f->ip} = \texttt{ip}$.
+        \item Thiết lập quyền đọc/ghi:
+        \begin{lstlisting}[language=C]
+        f->readable = !(omode & O_WRONLY);
+        f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+        \end{lstlisting}
+    \end{itemize}
+    \item \textbf{Xử lý cờ \texttt{O\_TRUNC}}:
+    \begin{itemize}
+        \item Nếu tập tin được mở với cờ \texttt{O\_TRUNC} và là tập tin thông thường (\texttt{T\_FILE}), kernel gọi hàm \texttt{itrunc(ip)} để giải phóng toàn bộ các khối dữ liệu (data blocks) trên đĩa và đặt lại kích thước tệp về 0.
+    \end{itemize}
+    \item \textbf{Mở khóa Inode và Hoàn tất Giao dịch}:
+    \begin{itemize}
+        \item Gọi \texttt{iunlock(ip)} để giải phóng khóa trên inode (lưu ý inode vẫn được giữ trong bộ nhớ vì con trỏ $\texttt{f->ip}$ đang tham chiếu đến nó).
+        \item Gọi \texttt{end\_op()} để hoàn thành giao dịch nhật ký và ghi dữ liệu ra đĩa nếu cần thiết.
+        \item Trả về số nguyên \texttt{fd}. Giá trị này được lưu vào \texttt{p->trapframe->a0} để chuyển về cho tiến trình người dùng khi quay lại User mode thông qua \texttt{usertrapret()}.
+    \end{itemize}
+\end{enumerate}
+
+\subsubsection{Các nhánh xử lý lỗi (Error Paths) và Cơ chế dọn dẹp tài nguyên}
+
+Tính toàn vẹn của hệ điều hành đòi hỏi mọi nhánh lỗi đều phải được xử lý triệt để, không để lại tình trạng rò rỉ bộ nhớ, giữ khóa vô hạn (deadlock) hoặc làm sai lệch hệ thống tập tin:
+
+\begin{itemize}
+    \item \textbf{Lỗi phân giải Inode / Tạo tệp thất bại}: Nếu \texttt{create()} hoặc \texttt{namei()} trả về \texttt{0}, kernel lập tức gọi \texttt{end\_op()} để đóng giao dịch nhật ký và trả về $-1$.
+    \item \textbf{Lỗi kiểm tra quyền hạn hoặc loại tệp (Thư mục mở ghi, Thiết bị không hợp lệ)}: Inode đã được khóa trước đó, do đó kernel phải gọi \texttt{iunlockput(ip)} (kết hợp giữa mở khóa \texttt{iunlock} và giảm tham chiếu \texttt{iput}), sau đó gọi \texttt{end\_op()} và trả về $-1$.
+    \item \textbf{Lỗi cạn kiệt bảng \texttt{ftable} hoặc bảng \texttt{ofile[]}}:
+    \begin{lstlisting}[language=C]
+    if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+      if(f)
+        fileclose(f);
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    \end{lstlisting}
+    Đây là điểm cần lưu ý đặc biệt: Nếu \texttt{filealloc()} thành công (đã tăng $\texttt{f->ref} = 1$) nhưng \texttt{fdalloc(f)} thất bại (tiến trình đã mở đủ 16 tập tin), kernel phải gọi ngay \texttt{fileclose(f)} để hoàn trả ô nhớ trong \texttt{ftable}, tránh rò rỉ ô tập tin toàn cục. Tiếp theo, gọi \texttt{iunlockput(ip)} và \texttt{end\_op()} trước khi trả về $-1$.
+\end{itemize}
+

@@ -1,0 +1,80 @@
+\subsubsection{Cấu trúc dữ liệu \texttt{struct sysinfo}}
+
+Để cung cấp bức tranh toàn diện và chính xác về trạng thái quản lý tập tin và tiến trình trong hệ điều hành xv6, cấu trúc \texttt{struct sysinfo} cùng các cấu trúc con được định nghĩa trong \texttt{kernel/sysinfo.h} theo chuẩn thiết kế đã thống nhất giữa các thành viên:
+
+\begin{lstlisting}[language=C]
+struct sysinfo_file {
+  int idx;          // Vi tri trong ftable.file[] (dung de noi voi process)
+  int type;         // FD_NONE / FD_PIPE / FD_INODE / FD_DEVICE
+  int readable;
+  int writable;
+  int ref;          // Reference count
+  int npids;
+  int pids[NPROC];  // Danh sach cac PID dang co fd tro toi file nay
+};
+
+struct sysinfo_proc {
+  int pid;
+  int state;        // Gia tri enum procstate
+  int ppid;         // 0 neu khong co parent (initproc)
+  int nsched;       // So lan duoc scheduler chon chay
+  char name[16];
+  int nfd;
+  int fds[NOFILE];  // So thu tu file descriptor (0..15)
+  int fidx[NOFILE]; // Chi so file tuong ung trong ftable (khop voi sysinfo_file.idx)
+};
+
+struct sysinfo {
+  int nfile;
+  struct sysinfo_file files[NFILE];
+  int nproc;
+  struct sysinfo_proc procs[NPROC];
+};
+\end{lstlisting}
+
+\subsubsection{Thách thức về Kích thước Ngăn xếp Kernel và Giải pháp \texttt{copyout} từng phần tử}
+
+\textbf{Vấn đề tràn ngăn xếp (Stack Overflow) trong Kernel}:
+\begin{itemize}
+    \item Kích thước tính toán của các cấu trúc:
+    \begin{align*}
+    \text{sizeof}(\texttt{struct sysinfo\_file}) &= 4 \times 5 + 4 + 4 \times 64 = 280\text{ bytes} \\
+    \text{sizeof}(\texttt{files}[100]) &= 280 \times 100 = 28,000\text{ bytes} \approx 28\text{ KB} \\
+    \text{sizeof}(\texttt{struct sysinfo\_proc}) &= 4 \times 4 + 16 + 4 + 16 \times 4 + 16 \times 4 = 164\text{ bytes} \\
+    \text{sizeof}(\texttt{procs}[64]) &= 164 \times 64 = 10,496\text{ bytes} \approx 10.5\text{ KB} \\
+    \text{Tổng kích thước }\texttt{struct sysinfo} &\approx 28\text{ KB} + 10.5\text{ KB} + 8\text{ bytes} \approx 38.5\text{ KB}
+    \end{align*}
+    \item Trong xv6, ngăn xếp chế độ nhân (kernel stack) của mỗi tiến trình chỉ được cấp phát đúng \textbf{1 trang bộ nhớ vật lý} duy nhất (\texttt{PGSIZE = 4096 bytes = 4 KB}), và ngăn xếp của tiến trình người dùng cũng chỉ có 1 trang (\texttt{USERSTACK = 1} trong \texttt{kernel/param.h}).
+    \item Nếu bất kỳ hàm nào trong kernel khai báo một biến cục bộ dạng \texttt{struct sysinfo info;} trên ngăn xếp, thao tác này sẽ tiêu tốn ngay lập tức $\approx 38.5\text{ KB}$, vượt gấp gần 10 lần dung lượng ngăn xếp cho phép ($4\text{ KB}$). Hậu quả là ngăn xếp lập tức bị tràn qua trang bảo vệ (guard page), làm sập hệ điều hành (kernel panic do page fault).
+\end{itemize}
+
+\textbf{Giải pháp Kiến trúc}:
+\begin{itemize}
+    \item Trong kernel, tuyệt đối \textbf{không} khai báo toàn bộ cấu trúc \texttt{struct sysinfo} trên ngăn xếp.
+    \item Thay vào đó, kernel chỉ khai báo \textbf{duy nhất một phần tử} cục bộ (\texttt{struct sysinfo\_file sf} $\approx 280$ bytes trong \texttt{filecollect}, hoặc \texttt{struct sysinfo\_proc sp} $\approx 164$ bytes trong \texttt{proccollect}) trên stack tại mỗi vòng lặp.
+    \item Ngay sau khi trích xuất và chuẩn bị xong dữ liệu cho phần tử thứ $k$, kernel sử dụng hàm \texttt{copyout()} để sao chép trực tiếp phần tử đó vào đúng vị trí đích trên không gian địa chỉ ảo của tiến trình người dùng tại:
+    \begin{lstlisting}[language=C]
+    uint64 dst = addr + __builtin_offsetof(struct sysinfo, files) 
+                      + (uint64)count * sizeof(struct sysinfo_file);
+    copyout(p->pagetable, dst, (char *)&sf, sizeof(sf));
+    \end{lstlisting}
+    \item Ở phía chương trình người dùng (\texttt{sysinfotest.c}), do ngăn xếp user cũng chỉ có 1 trang (4KB), biến \texttt{struct sysinfo} bắt buộc phải được khai báo ở phạm vi \textbf{toàn cục} (được lưu tại phân vùng BSS/DATA) hoặc cấp phát động qua \texttt{malloc()}, không được để làm biến cục bộ trong hàm.
+\end{itemize}
+
+\subsubsection{Sơ đồ Luồng Gọi Hệ thống \texttt{sysinfo}}
+
+Quy trình kích hoạt và điều phối của syscall \texttt{sysinfo} được tóm lược như sau:
+
+\begin{enumerate}
+    \item \textbf{User Space}: Tiến trình người dùng gọi \texttt{sysinfo(\&info)}.
+    \item \textbf{Traps}: Lệnh \texttt{ecall} đưa CPU vào kernel $\rightarrow$ \texttt{usertrap()} $\rightarrow$ \texttt{syscall()} phân phối tới \texttt{sys\_sysinfo()} (\texttt{kernel/sysproc.c}).
+    \item \textbf{Điều phối trong \texttt{sys\_sysinfo()}}:
+    \begin{itemize}
+        \item Gọi \texttt{argaddr(0, \&addr)} để lấy địa chỉ con trỏ buffer người dùng.
+        \item Gọi \texttt{nfile = filecollect(addr)} (\texttt{kernel/file.c}): duyệt bảng \texttt{ftable}, thu thập các file đang mở và ghi trực tiếp vào mảng \texttt{info.files} của user.
+        \item Gọi \texttt{nproc = proccollect(addr)} (\texttt{kernel/proc.c}): duyệt mảng \texttt{proc}, thu thập các tiến trình đang hoạt động và ghi trực tiếp vào mảng \texttt{info.procs} của user.
+        \item Thực hiện \texttt{copyout()} hai biến đếm \texttt{nfile} và \texttt{nproc} vào các trường đầu của cấu trúc tại địa chỉ \texttt{addr}.
+        \item Trả về $0$ nếu toàn bộ thành công, hoặc $-1$ nếu có bất kỳ lỗi sao chép bộ nhớ nào (địa chỉ user không hợp lệ).
+    \end{itemize}
+\end{enumerate}
+

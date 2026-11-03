@@ -1,0 +1,76 @@
+Trong hệ điều hành xv6, việc quản lý tập tin được tổ chức theo kiến trúc phân tầng chặt chẽ nhằm tách biệt không gian định danh cục bộ của từng tiến trình với bảng quản lý tài nguyên tập tin dùng chung trên toàn hệ thống.
+
+\subsubsection{Bảng tập tin cục bộ của tiến trình: \texttt{ofile[]}}
+
+Mỗi tiến trình trong xv6 được đại diện bởi một \texttt{struct proc} (được định nghĩa trong \texttt{kernel/proc.h}). Bên trong cấu trúc này, mảng \texttt{ofile} quản lý danh sách các tập tin mà tiến trình đang mở:
+
+\begin{lstlisting}[language=C]
+struct file *ofile[NOFILE];  // Open files
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{Ý nghĩa của file descriptor (\texttt{fd})}: Chỉ số nguyên $0 \le \texttt{fd} < \texttt{NOFILE}$ của mảng chính là giá trị file descriptor mà tiến trình người dùng nhận được khi thực hiện các lời gọi hệ thống như \texttt{open()}, \texttt{dup()}, hoặc \texttt{pipe()}. Theo quy ước POSIX, $\texttt{fd} = 0$ là đầu vào chuẩn (standard input), $\texttt{fd} = 1$ là đầu ra chuẩn (standard output), và $\texttt{fd} = 2$ là đầu ra lỗi chuẩn (standard error).
+    \item \textbf{Giới hạn kích thước}: Hằng số \texttt{NOFILE} được định nghĩa tại \texttt{kernel/param.h} với giá trị bằng $16$. Điều này đồng nghĩa với việc mỗi tiến trình chỉ có thể mở đồng thời tối đa 16 tập tin.
+    \item \textbf{Cơ chế tham chiếu}: Mỗi phần tử \texttt{ofile[fd]} là một con trỏ kiểu \texttt{struct file*}. Nếu ô tương ứng chưa được sử dụng hoặc tập tin đã được đóng thông qua \texttt{close()}, con trỏ này sẽ mang giá trị \texttt{0} (\texttt{NULL}). Ngược lại, nó trỏ trực tiếp đến một phần tử nằm trong bảng tập tin toàn cục của hệ thống.
+\end{itemize}
+
+\subsubsection{Bảng tập tin toàn cục của hệ thống: \texttt{ftable}}
+
+Trái ngược với \texttt{ofile[]} mang tính cục bộ, \texttt{ftable} là bảng quản lý tất cả các đối tượng tập tin đang mở trên toàn bộ hệ điều hành xv6, được khai báo dạng cấu trúc ẩn danh trong \texttt{kernel/file.c}:
+
+\begin{lstlisting}[language=C]
+struct {
+  struct spinlock lock;
+  struct file file[NFILE];
+} ftable;
+\end{lstlisting}
+
+\begin{itemize}
+    \item \textbf{Ý nghĩa}: Bảng \texttt{ftable.file[]} đóng vai trò là kho lưu trữ tập trung cho mọi tập tin đang mở của hệ thống. Bảng này dùng chung cho tất cả các tiến trình và được bảo vệ bởi khóa \texttt{ftable.lock} để đảm bảo an toàn truy cập đồng thời trong môi trường đa nhân (SMP).
+    \item \textbf{Giới hạn kích thước}: Hằng số \texttt{NFILE} được định nghĩa tại \texttt{kernel/param.h} là $100$. Do đó, toàn hệ thống xv6 chỉ có thể duy trì tối đa 100 đối tượng tập tin mở đồng thời.
+    \item \textbf{Quản lý cấp phát}: Khi một tập tin được mở (thông qua \texttt{filealloc()}), kernel duyệt mảng \texttt{ftable.file} dưới sự bảo vệ của \texttt{ftable.lock} để tìm phần tử có số lượt tham chiếu $\texttt{ref} == 0$, tăng $\texttt{ref} = 1$ và trả về con trỏ tới phần tử đó. Khi tập tin được đóng (\texttt{fileclose()}), \texttt{ref} sẽ giảm đi 1; chỉ khi \texttt{ref} chạm mốc 0, tập tin mới thực sự bị giải phóng khỏi \texttt{ftable}.
+\end{itemize}
+
+\subsubsection{Chi tiết cấu trúc \texttt{struct file}}
+
+Cấu trúc \texttt{struct file} (\texttt{kernel/file.h}) chứa toàn bộ siêu dữ liệu mô tả trạng thái của một tập tin đang mở:
+
+\begin{lstlisting}[language=C]
+struct file {
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  int ref;            // reference count
+  char readable;      // cho phep doc (1) hoac khong (0)
+  char writable;      // cho phep ghi (1) hoac khong (0)
+  struct pipe *pipe;  // con tro pipe neu type == FD_PIPE
+  struct inode *ip;   // con tro inode neu type == FD_INODE / FD_DEVICE
+  uint off;           // vi tri doc/ghi hien tai (offset)
+  short major;        // chi so thiet bi neu type == FD_DEVICE
+};
+\end{lstlisting}
+
+\begin{itemize}
+    \item \texttt{type}: Xác định bản chất tài nguyên mà cấu trúc này đại diện:
+    \begin{itemize}
+        \item \texttt{FD\_NONE}: Ô trống chưa được sử dụng trong \texttt{ftable}.
+        \item \texttt{FD\_PIPE}: Đường ống giao tiếp liên tiến trình (IPC).
+        \item \texttt{FD\_INODE}: Tập tin hoặc thư mục thông thường được lưu trữ trên đĩa.
+        \item \texttt{FD\_DEVICE}: Tập tin thiết bị phần cứng đặc biệt (ví dụ: màn hình/bàn phím console).
+    \end{itemize}
+    \item \texttt{ref}: Số lượng liên kết trỏ tới cấu trúc này (tổng số lượng \texttt{ofile[fd]} trên mọi tiến trình đang trỏ đến nó).
+    \item \texttt{readable} và \texttt{writable}: Các cờ phân quyền truy cập, được thiết lập dựa trên chế độ mở tập tin (\texttt{O\_RDONLY}, \texttt{O\_WRONLY}, \texttt{O\_RDWR}).
+    \item \texttt{pipe}: Trỏ tới \texttt{struct pipe} chứa bộ đệm vòng (circular buffer) và các khóa đồng bộ khi tập tin là pipe.
+    \item \texttt{ip}: Trỏ tới \texttt{struct inode} đại diện cho tập tin trên đĩa trong bộ nhớ RAM.
+    \item \texttt{off}: Byte offset hiện tại. Mọi thao tác \texttt{read()} hoặc \texttt{write()} sẽ diễn ra tại vị trí này và tự động tăng giá trị của \texttt{off}.
+    \item \texttt{major}: Số hiệu thiết bị chính (major number), dùng làm chỉ số tra bảng hàm xử lý \texttt{devsw[]}.
+\end{itemize}
+
+\subsubsection{Mô hình quan hệ kiến trúc 3 tầng}
+
+Kiến trúc xử lý tập tin của xv6 phân chia thành 3 tầng rõ rệt:
+
+\begin{enumerate}
+    \item \textbf{Tầng 1 -- File Descriptor Cục bộ (\texttt{ofile[]})}: Tồn tại độc lập trong từng tiến trình, giúp che giấu cấu trúc dữ liệu nội bộ của kernel và ngăn chặn tiến trình can thiệp trái phép vào tập tin của tiến trình khác.
+    \item \textbf{Tầng 2 -- Bảng Tập tin Mở Toàn cục (\texttt{ftable.file[]})}: Đại diện cho một phiên mở tập tin (open file instance). Đây là nơi lưu trữ quyền truy cập và con trỏ đọc/ghi \texttt{off}. Nhờ tầng trung gian này, hai tiến trình (ví dụ cha và con sau \texttt{fork()}) hoặc hai descriptor trong cùng một tiến trình (sau \texttt{dup()}) có thể chia sẻ chung một con trỏ \texttt{off}.
+    \item \textbf{Tầng 3 -- Tài nguyên vật lý bên dưới (\texttt{inode} / \texttt{pipe} / \texttt{device})}: Đại diện cho dữ liệu thực sự trên đĩa cứng hoặc thiết bị ngoại vi. Nếu hai tiến trình thực hiện hai lời gọi \texttt{open()} độc lập trên cùng một đường dẫn, chúng sẽ được cấp phát hai \texttt{struct file} riêng biệt ở Tầng 2 (với hai con trỏ \texttt{off} độc lập), nhưng cả hai \texttt{struct file} này đều cùng trỏ về một \texttt{struct inode} duy nhất ở Tầng 3.
+\end{enumerate}
+

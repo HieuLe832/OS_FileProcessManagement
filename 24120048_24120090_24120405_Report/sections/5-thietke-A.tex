@@ -1,0 +1,12 @@
+\item \textbf{Cơ chế \texttt{copyout} từng phần tử thay vì toàn bộ cấu trúc:}
+Do \texttt{struct sysinfo} có kích thước xấp xỉ 38.5 KB, trong khi kernel stack của xv6 chỉ có đúng 1 trang bộ nhớ vật lý 4 KB (\texttt{PGSIZE = 4096}), việc khai báo toàn bộ cấu trúc trên stack sẽ gây tràn ngăn xếp (kernel stack overflow) và panic ngay lập tức. Thiết kế lựa chọn giải pháp chỉ khởi tạo từng phần tử đơn lẻ (\texttt{struct sysinfo\_file} khoảng 280 bytes) trên stack và dùng \texttt{copyout()} chép trực tiếp vào đúng vị trí đích trên không gian nhớ của tiến trình người dùng thông qua \texttt{\_\_builtin\_offsetof}.
+
+\item \textbf{Bảo mật bộ nhớ kernel bằng \texttt{memset}:}
+Trước khi ghi nhận dữ liệu cho \texttt{struct sysinfo\_file}, hàm \texttt{memset(\&sf, 0, sizeof(sf))} được gọi để xóa sạch toàn bộ các byte trên ngăn xếp nhân (bao gồm cả các byte padding giữa các trường). Thao tác này ngăn chặn hoàn toàn nguy cơ rò rỉ dữ liệu nhạy cảm của kernel (kernel information leak) ra không gian người dùng khi thực hiện \texttt{copyout()}.
+
+\item \textbf{Chiến lược Snapshot và Thứ tự Lock:}
+Để tránh nguy cơ bế tắc (AB-BA deadlock) giữa khóa bảng tập tin toàn cục \texttt{ftable.lock} và khóa tiến trình \texttt{p->lock}, kernel chỉ giữ \texttt{ftable.lock} để sao chép nhanh các trường thông tin cơ bản của file, sau đó giải phóng khóa ngay trước khi chuyển sang bước tra cứu tiến trình \texttt{procs\_using\_file()} và bước gọi \texttt{copyout()}.
+
+\item \textbf{Giả định về tính nhất quán thống kê:}
+Việc kiểm tra mảng \texttt{ofile[]} của tiến trình khác mà không đóng băng toàn bộ hệ thống chấp nhận một cửa sổ thời gian cực nhỏ (race window) nếu tiến trình đó đang đồng thời thực hiện thao tác \texttt{close()}. Với mục đích thống kê và giám sát trạng thái hệ điều hành tại một thời điểm, giả định lấy mẫu độc lập tại thời khắc quan sát (snapshot observation) là hoàn toàn phù hợp và tối ưu về hiệu năng.
+
