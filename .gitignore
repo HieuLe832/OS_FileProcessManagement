@@ -6,6 +6,7 @@ fs.img
 *.pdf
 !24120048_24120090_24120405_Report/main.pdf
 *.md
+!24120048_24120090_24120405_Report/PHIEN_BAN.md
 # LaTeX build output
 *.aux
 *.log
