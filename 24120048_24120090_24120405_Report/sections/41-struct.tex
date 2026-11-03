@@ -1,8 +1,6 @@
-\subsubsection{Cấu trúc dữ liệu \texttt{struct sysinfo}}
+\texttt{struct sysinfo} và hai struct con được định nghĩa trong \texttt{kernel/sysinfo.h} (Bảng~\ref{tab:sysinfo}). Process và file được nối với nhau qua chỉ số trong \texttt{ftable}: fd thứ $k$ của một process trỏ tới file có \texttt{idx} bằng \texttt{fidx[}$k$\texttt{]}.
 
-Để cung cấp bức tranh toàn diện và chính xác về trạng thái quản lý tập tin và tiến trình trong hệ điều hành xv6, cấu trúc \texttt{struct sysinfo} cùng các cấu trúc con được định nghĩa trong \texttt{kernel/sysinfo.h} theo chuẩn thiết kế đã thống nhất giữa các thành viên (Bảng~\ref{tab:sysinfo}). Process và file được nối với nhau qua chỉ số trong \texttt{ftable}: fd thứ $k$ của một process trỏ tới file có \texttt{idx} bằng \texttt{fidx[}$k$\texttt{]}.
-
-\begin{table}[H]
+\begin{table}[tbp]
 \centering
 \begin{tabularx}{\textwidth}{|l|>{\raggedright\arraybackslash}X|}
 \hline
@@ -27,44 +25,6 @@
 \label{tab:sysinfo}
 \end{table}
 
-\subsubsection{Thách thức về Kích thước Ngăn xếp Kernel và Giải pháp \texttt{copyout} từng phần tử}
+\textbf{Kích thước và cách chép ra user.} Một \texttt{sysinfo\_file} chiếm 280 byte, một \texttt{sysinfo\_proc} chiếm 164 byte, nên cả \texttt{struct sysinfo} là $4 + 100 \times 280 + 4 + 64 \times 164 = 38\,504$ byte, khoảng 38.5 KB. Kernel stack của xv6 chỉ có một trang 4 KB, nên kernel không dựng cả struct trên stack. Mỗi lần kernel chỉ dựng một phần tử (vài trăm byte) trên stack rồi \texttt{copyout()} thẳng vào đúng chỗ trong buffer của user: phần tử thứ $k$ của \texttt{files} nằm ở \texttt{addr} cộng offset của trường \texttt{files} (tính bằng \texttt{\_\_builtin\_offsetof}) cộng $k \times 280$; mảng \texttt{procs} tính tương tự. User stack cũng chỉ có một trang (\texttt{USERSTACK = 1}), nên chương trình user phải khai báo \texttt{struct sysinfo} toàn cục hoặc cấp bằng \texttt{malloc}.
 
-\textbf{Vấn đề tràn ngăn xếp (Stack Overflow) trong Kernel}:
-\begin{itemize}
-    \item Kích thước tính toán của các cấu trúc:
-    \begin{align*}
-    \text{sizeof}(\texttt{struct sysinfo\_file}) &= 4 \times 5 + 4 + 4 \times 64 = 280\text{ bytes} \\
-    \text{sizeof}(\texttt{files}[100]) &= 280 \times 100 = 28,000\text{ bytes} \approx 28\text{ KB} \\
-    \text{sizeof}(\texttt{struct sysinfo\_proc}) &= 4 \times 4 + 16 + 4 + 16 \times 4 + 16 \times 4 = 164\text{ bytes} \\
-    \text{sizeof}(\texttt{procs}[64]) &= 164 \times 64 = 10,496\text{ bytes} \approx 10.5\text{ KB} \\
-    \text{Tổng kích thước }\texttt{struct sysinfo} &\approx 28\text{ KB} + 10.5\text{ KB} + 8\text{ bytes} \approx 38.5\text{ KB}
-    \end{align*}
-    \item Trong xv6, ngăn xếp chế độ nhân (kernel stack) của mỗi tiến trình chỉ được cấp phát đúng \textbf{1 trang bộ nhớ vật lý} duy nhất (\texttt{PGSIZE = 4096 bytes = 4 KB}), và ngăn xếp của tiến trình người dùng cũng chỉ có 1 trang (\texttt{USERSTACK = 1} trong \texttt{kernel/param.h}).
-    \item Nếu bất kỳ hàm nào trong kernel khai báo một biến cục bộ dạng \texttt{struct sysinfo info;} trên ngăn xếp, thao tác này sẽ tiêu tốn ngay lập tức $\approx 38.5\text{ KB}$, vượt gấp gần 10 lần dung lượng ngăn xếp cho phép ($4\text{ KB}$). Hậu quả là ngăn xếp lập tức bị tràn qua trang bảo vệ (guard page), làm sập hệ điều hành (kernel panic do page fault).
-\end{itemize}
-
-\textbf{Giải pháp Kiến trúc}:
-\begin{itemize}
-    \item Trong kernel, tuyệt đối \textbf{không} khai báo toàn bộ cấu trúc \texttt{struct sysinfo} trên ngăn xếp.
-    \item Thay vào đó, kernel chỉ khai báo \textbf{duy nhất một phần tử} cục bộ (\texttt{struct sysinfo\_file sf} $\approx 280$ bytes trong \texttt{filecollect}, hoặc \texttt{struct sysinfo\_proc sp} $\approx 164$ bytes trong \texttt{proccollect}) trên stack tại mỗi vòng lặp.
-    \item Ngay sau khi trích xuất và chuẩn bị xong dữ liệu cho phần tử thứ $k$, kernel sử dụng hàm \texttt{copyout()} để sao chép trực tiếp phần tử đó vào đúng vị trí đích trên không gian địa chỉ ảo của tiến trình người dùng. Với mảng \texttt{files}, vị trí đó là \texttt{addr} cộng offset của trường \texttt{files} trong \texttt{struct sysinfo} (tính bằng \texttt{\_\_builtin\_offsetof}) cộng $k \times$ \texttt{sizeof(struct sysinfo\_file)}; mảng \texttt{procs} tính tương tự.
-    \item Ở phía chương trình người dùng (\texttt{sysinfotest.c}), do ngăn xếp user cũng chỉ có 1 trang (4KB), biến \texttt{struct sysinfo} bắt buộc phải được khai báo ở phạm vi \textbf{toàn cục} (được lưu tại phân vùng BSS/DATA) hoặc cấp phát động qua \texttt{malloc()}, không được để làm biến cục bộ trong hàm.
-\end{itemize}
-
-\subsubsection{Sơ đồ Luồng Gọi Hệ thống \texttt{sysinfo}}
-
-Quy trình kích hoạt và điều phối của syscall \texttt{sysinfo} được tóm lược như sau:
-
-\begin{enumerate}
-    \item \textbf{User Space}: Tiến trình người dùng gọi \texttt{sysinfo(\&info)}.
-    \item \textbf{Traps}: Lệnh \texttt{ecall} đưa CPU vào kernel $\rightarrow$ \texttt{usertrap()} $\rightarrow$ \texttt{syscall()} phân phối tới \texttt{sys\_sysinfo()} (\texttt{kernel/sysproc.c}).
-    \item \textbf{Điều phối trong \texttt{sys\_sysinfo()}}:
-    \begin{itemize}
-        \item Gọi \texttt{argaddr(0, \&addr)} để lấy địa chỉ con trỏ buffer người dùng.
-        \item Gọi \texttt{nfile = filecollect(addr)} (\texttt{kernel/file.c}): duyệt bảng \texttt{ftable}, thu thập các file đang mở và ghi trực tiếp vào mảng \texttt{info.files} của user.
-        \item Gọi \texttt{nproc = proccollect(addr)} (\texttt{kernel/proc.c}): duyệt mảng \texttt{proc}, thu thập các tiến trình đang hoạt động và ghi trực tiếp vào mảng \texttt{info.procs} của user.
-        \item Thực hiện \texttt{copyout()} hai biến đếm \texttt{nfile} và \texttt{nproc} vào các trường đầu của cấu trúc tại địa chỉ \texttt{addr}.
-        \item Trả về $0$ nếu toàn bộ thành công, hoặc $-1$ nếu có bất kỳ lỗi sao chép bộ nhớ nào (địa chỉ user không hợp lệ).
-    \end{itemize}
-\end{enumerate}
-
+\textbf{Luồng gọi.} \texttt{sysinfo(\&info)} ở user đi qua \texttt{ecall}, \texttt{usertrap()}, \texttt{syscall()} tới \texttt{sys\_sysinfo()} (\texttt{kernel/sysproc.c}). Hàm này lấy địa chỉ buffer bằng \texttt{argaddr(0, \&addr)}, gọi \texttt{filecollect(addr)} (mục 4.2) rồi \texttt{proccollect(addr)} (mục 4.3), mỗi hàm tự ghi mảng của mình và trả về số phần tử, cuối cùng \texttt{copyout} hai số \texttt{nfile} và \texttt{nproc}. Nếu có \texttt{copyout} nào lỗi (địa chỉ user không hợp lệ) thì syscall trả về $-1$, ngược lại trả về 0.

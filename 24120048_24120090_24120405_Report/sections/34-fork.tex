@@ -1,23 +1,15 @@
-Luồng chính khi một chương trình user gọi \texttt{fork()}:
-
 \begin{enumerate}
-    \item \textbf{Vào kernel.} Stub \texttt{fork} trong \texttt{user/usys.S} nạp \texttt{SYS\_fork} vào thanh ghi \texttt{a7} rồi thực hiện \texttt{ecall}. CPU nhảy tới \texttt{uservec} (lưu thanh ghi user vào trapframe), rồi \texttt{usertrap()} cộng 4 vào \texttt{epc} để khi quay về sẽ chạy lệnh ngay sau \texttt{ecall}, sau đó \texttt{syscall()} gọi \texttt{sys\_fork()}, và hàm này gọi \texttt{fork()} trong \texttt{kernel/proc.c}.
-
-    \item \textbf{\texttt{allocproc()}: lấy một ô trong bảng process.} Hàm duyệt \texttt{proc[]}, khóa \texttt{p->lock} của từng ô để tìm ô \texttt{UNUSED}. Khi tìm được, nó cấp pid mới bằng \texttt{allocpid()} (tăng \texttt{nextpid} dưới \texttt{pid\_lock}), đặt trạng thái \texttt{USED} (và \texttt{nsched = 0}, phần nhóm thêm vào), cấp một trang cho trapframe, tạo page table rỗng đã map sẵn trampoline và trapframe (\texttt{proc\_pagetable()}), xóa \texttt{context} rồi đặt \texttt{context.ra = forkret} và \texttt{context.sp} bằng đỉnh kernel stack. Hàm trả về khi vẫn giữ \texttt{np->lock}, nên chưa CPU nào có thể chạy process mới. Nếu không còn ô trống hoặc hết bộ nhớ, \texttt{fork()} trả về $-1$.
-
-    \item \textbf{\texttt{uvmcopy()}: chép bộ nhớ user.} Với từng trang trong \texttt{p->sz} byte của cha, kernel cấp một trang vật lý mới, chép nội dung và map vào page table của con với cùng quyền. xv6 không dùng copy-on-write nên đây là bản sao thật. Nếu lỗi, \texttt{freeproc(np)} trả lại mọi thứ đã cấp và \texttt{fork()} trả về $-1$. Sau đó \texttt{np->sz = p->sz}.
-
-    \item \textbf{Chép trapframe.} \texttt{*(np->trapframe) = *(p->trapframe)}: con có đúng các thanh ghi user của cha, kể cả \texttt{epc}, nên khi về user nó tiếp tục ở cùng chỗ với cha. Riêng \texttt{np->trapframe->a0} được gán 0.
-
-    \item \textbf{Chia sẻ tài nguyên.} \texttt{filedup()} cho mọi fd đang mở (mục 3.3), \texttt{idup()} cho thư mục hiện hành \texttt{cwd}, chép tên process.
-
-    \item \textbf{Gắn cha và cho phép chạy.} Kernel lưu pid của con, nhả \texttt{np->lock}, lấy \texttt{wait\_lock} để gán \texttt{np->parent = p}, rồi lấy lại \texttt{np->lock} để đặt trạng thái \texttt{RUNNABLE}. Phải nhả \texttt{np->lock} trước khi xin \texttt{wait\_lock} vì thứ tự khóa trong xv6 là \texttt{wait\_lock} trước \texttt{p->lock} (giống \texttt{exit()} và \texttt{wait()}); giữ \texttt{np->lock} rồi mới xin \texttt{wait\_lock} có thể gây deadlock.
-
-    \item \textbf{Trả về cho cha.} \texttt{fork()} trả về pid của con; \texttt{syscall()} ghi giá trị này vào \texttt{p->trapframe->a0} của cha, rồi \texttt{usertrapret()} đưa cha về user mode.
+    \item \textbf{Vào kernel} giống \texttt{open} (mục 3.2): stub \texttt{fork} trong \texttt{usys.S}, \texttt{ecall}, \texttt{usertrap()}, \texttt{syscall()}, rồi \texttt{sys\_fork()} gọi \texttt{fork()} trong \texttt{kernel/proc.c}.
+    \item \textbf{\texttt{allocproc()}} tìm một ô \texttt{UNUSED} trong \texttt{proc[]}, cấp pid mới bằng \texttt{allocpid()}, đặt trạng thái \texttt{USED} (và \texttt{nsched = 0}, phần nhóm thêm), cấp trang trapframe và page table, rồi đặt \texttt{context.ra = forkret} và \texttt{context.sp} ở đỉnh kernel stack. Hàm trả về khi vẫn giữ \texttt{np->lock}. Hết ô hoặc hết bộ nhớ thì \texttt{fork()} trả về $-1$.
+    \item \textbf{\texttt{uvmcopy()}} chép toàn bộ bộ nhớ user của cha sang các trang mới của con (xv6 không dùng copy-on-write). Lỗi thì \texttt{freeproc(np)} và trả về $-1$.
+    \item \textbf{Chép trapframe} của cha sang con, rồi gán \texttt{np->trapframe->a0 = 0}.
+    \item \textbf{Chia sẻ tài nguyên}: \texttt{filedup()} mọi fd đang mở (mục 3.3), \texttt{idup()} thư mục hiện hành, chép tên process.
+    \item \textbf{Gắn cha và cho chạy}: nhả \texttt{np->lock}, lấy \texttt{wait\_lock} để gán \texttt{np->parent = p}, rồi lấy lại \texttt{np->lock} để đặt \texttt{RUNNABLE}. Phải nhả \texttt{np->lock} trước vì xv6 luôn lấy \texttt{wait\_lock} trước \texttt{p->lock}.
+    \item \textbf{Trả về pid của con}; \texttt{syscall()} ghi giá trị này vào \texttt{a0} của cha.
 \end{enumerate}
 
-\textbf{Lần chạy đầu tiên của con.} Khi \texttt{scheduler()} gặp con ở trạng thái \texttt{RUNNABLE}, nó đặt \texttt{RUNNING} (và tăng \texttt{nsched}) rồi gọi \texttt{swtch(\&c->context, \&np->context)}. Vì \texttt{context.ra = forkret}, lệnh \texttt{ret} cuối \texttt{swtch} nhảy vào \texttt{forkret()} chứ không quay về nơi gọi nào. \texttt{forkret()} nhả \texttt{p->lock} mà \texttt{scheduler()} đang giữ (riêng process đầu tiên của hệ thống còn gọi \texttt{fsinit()}), rồi gọi \texttt{usertrapret()}; \texttt{userret} khôi phục thanh ghi từ trapframe và lệnh \texttt{sret} đưa con về user mode tại \texttt{epc}.
+\textbf{Vì sao cha nhận pid của con, còn con nhận 0.} Con quay về user với bản sao trapframe của cha, nên chạy tiếp từ cùng lệnh sau \texttt{ecall}; chỉ khác thanh ghi \texttt{a0} chứa giá trị trả về. \texttt{a0} của cha được \texttt{syscall()} ghi bằng pid của con, còn \texttt{a0} của con đã bị \texttt{fork()} gán 0 và con không đi qua \texttt{syscall()}.
 
-\textbf{Vì sao cha nhận pid của con còn con nhận 0.} Cả hai quay về user từ cùng một bộ thanh ghi (trapframe của con là bản sao), chỉ khác thanh ghi \texttt{a0} là nơi chứa giá trị trả về: \texttt{a0} của cha được \texttt{syscall()} ghi bằng giá trị trả về của \texttt{fork()} (pid của con), còn \texttt{a0} của con đã bị \texttt{fork()} gán 0 từ trước và con không hề đi qua đoạn ghi giá trị trả về trong \texttt{syscall()}. Chương trình user phân biệt cha và con dựa vào giá trị này.
+\textbf{Lần chạy đầu tiên của con.} Khi \texttt{scheduler()} chọn con, \texttt{swtch()} nạp \texttt{context} của con và lệnh \texttt{ret} nhảy tới \texttt{forkret()} (vì \texttt{ra = forkret}). \texttt{forkret()} nhả \texttt{p->lock} mà scheduler đang giữ, rồi \texttt{usertrapret()} đưa con về user mode.
 
-Kết quả kiểm thử khớp với luồng trên. Test 5: ngay sau \texttt{fork}, con có \texttt{ppid} bằng pid của cha, cùng tên \texttt{sysinfotest}, cùng các fd, ở trạng thái \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được chọn chạy lần nào. Test 16: fork liên tục cho tới khi \texttt{allocproc()} hết ô, tạo được 61 con, \texttt{nproc} đạt \texttt{NPROC} = 64 và lần \texttt{fork} tiếp theo trả về $-1$. Test 13: khi cha thoát, \texttt{exit()} gọi \texttt{reparent()} chuyển con của nó cho \texttt{init} (\texttt{ppid} thành 1).
+Test 5 (mục 6) cho thấy ngay sau \texttt{fork}, con có \texttt{ppid} bằng pid của cha, có cùng các fd, và ở trạng thái \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được chạy lần nào.

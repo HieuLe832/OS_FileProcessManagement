@@ -1,14 +1,10 @@
-Trong xv6, file descriptor (fd) chỉ là chỉ số của mảng \texttt{ofile[]} trong \texttt{struct proc}. Phần tử ở chỉ số đó trỏ tới một \texttt{struct file} trong bảng \texttt{ftable} dùng chung cho toàn hệ thống (mục 3.1). Hai trường của \texttt{struct file} quyết định các fd có dùng chung trạng thái với nhau hay không: \texttt{ref} (số con trỏ trong các \texttt{ofile[]} đang trỏ tới nó) và \texttt{off} (vị trí đọc/ghi hiện tại). Ba lời gọi \texttt{open()}, \texttt{dup()}, \texttt{fork()} khác nhau ở chỗ có tạo \texttt{struct file} mới hay chỉ thêm con trỏ tới một \texttt{struct file} đã có.
-
+fd chỉ là chỉ số trong \texttt{ofile[]}, trỏ tới một \texttt{struct file} trong \texttt{ftable} (mục 3.1). Ba lời gọi khác nhau ở chỗ có tạo \texttt{struct file} mới hay chỉ thêm con trỏ tới một \texttt{struct file} đã có:
 \begin{itemize}
-    \item \textbf{\texttt{open()}} (\texttt{sys\_open}, \texttt{kernel/sysfile.c}): sau khi tìm hoặc tạo được inode, kernel gọi \texttt{filealloc()} để lấy ô đầu tiên có \texttt{ref == 0} trong \texttt{ftable} và đặt \texttt{ref = 1}, rồi gọi \texttt{fdalloc()} để gắn \texttt{struct file} đó vào ô trống có chỉ số nhỏ nhất của \texttt{ofile[]}. Quyền đọc/ghi lấy theo \texttt{omode}, \texttt{off} đặt về 0. Vì mỗi lần \texttt{open} tạo một \texttt{struct file} riêng nên mở cùng một file hai lần sẽ cho hai fd có offset độc lập; chúng chỉ dùng chung inode. Nếu \texttt{fdalloc()} thất bại (process đã dùng hết \texttt{NOFILE} fd), \texttt{sys\_open} gọi \texttt{fileclose(f)} để trả lại \texttt{struct file} vừa lấy.
-
-    \item \textbf{\texttt{dup(fd)}} (\texttt{sys\_dup}): \texttt{argfd()} kiểm tra fd hợp lệ và lấy \texttt{struct file} của nó, \texttt{fdalloc()} cấp một fd mới trỏ tới \emph{chính} \texttt{struct file} đó, sau đó \texttt{filedup()} tăng \texttt{ref} thêm 1. Không có \texttt{struct file} mới, nên fd cũ và fd mới dùng chung offset và quyền đọc/ghi. \texttt{fdalloc()} được gọi trước \texttt{filedup()}, nên khi hết fd thì chưa có gì phải hoàn tác.
-
-    \item \textbf{\texttt{fork()}} (\texttt{kernel/proc.c}): với mỗi ô khác 0 trong \texttt{ofile[]} của cha, kernel gán \texttt{np->ofile[i] = filedup(p->ofile[i])}. Con có đúng các số fd như cha, mỗi fd trỏ tới cùng \texttt{struct file}, và mỗi fd được chép làm \texttt{ref} tăng 1. Cha và con dùng chung offset: con đọc 1 byte thì lần đọc tiếp theo của cha bắt đầu từ byte thứ hai.
+    \item \textbf{\texttt{open()}} gọi \texttt{filealloc()} để tạo \texttt{struct file} mới (\texttt{ref = 1}, \texttt{off = 0}) rồi \texttt{fdalloc()} để cấp fd. Mở cùng một file hai lần cho hai fd có offset độc lập, chỉ chung inode.
+    \item \textbf{\texttt{dup(fd)}} cấp fd mới bằng \texttt{fdalloc()}, trỏ tới \emph{chính} \texttt{struct file} của fd cũ, rồi \texttt{filedup()} tăng \texttt{ref}. Hai fd dùng chung offset và quyền đọc/ghi.
+    \item \textbf{\texttt{fork()}} gán \texttt{np->ofile[i] = filedup(p->ofile[i])} cho mọi fd của cha. Con có đúng các số fd của cha, trỏ tới cùng các \texttt{struct file}, nên cha và con dùng chung offset; mỗi fd được chép làm \texttt{ref} tăng 1.
 \end{itemize}
-
-Chiều ngược lại, \texttt{close()} gọi \texttt{fileclose()} để giảm \texttt{ref}. Chỉ khi \texttt{ref} về 0 thì \texttt{struct file} mới được giải phóng (\texttt{type = FD\_NONE}) và tài nguyên bên dưới mới được trả lại: \texttt{iput()} với inode/thiết bị, \texttt{pipeclose()} với pipe. Khi process thoát, \texttt{exit()} cũng gọi \texttt{fileclose()} cho mọi fd còn mở.
+Chiều ngược lại, \texttt{close()} gọi \texttt{fileclose()} để giảm \texttt{ref}. Chỉ khi \texttt{ref} về 0 thì \texttt{struct file} mới được giải phóng và tài nguyên bên dưới được trả lại (\texttt{iput()} hoặc \texttt{pipeclose()}). \texttt{exit()} cũng đóng mọi fd theo cách này.
 
 \begin{table}[H]
 \centering
@@ -25,6 +21,4 @@ Process giữ fd & Process gọi \texttt{open} & Process gọi \texttt{dup} & C�
 \caption{So sánh cách dùng file descriptor trong \texttt{open()}, \texttt{dup()} và \texttt{fork()}}
 \end{table}
 
-Việc \texttt{fork()} dùng chung offset là có chủ ý. Shell dựa vào nó để các lệnh con lần lượt ghi tiếp vào cùng một file khi chuyển hướng output, thay vì ghi đè lên nhau \cite{xv6book}.
-
-Các tính chất trên được kiểm chứng bằng \texttt{sysinfotest} (mục 6). Test 3: hai lần \texttt{open} cùng file cho hai entry khác nhau, mỗi entry \texttt{ref = 1}, cả hai fd đều đọc ra \texttt{'a'}. Test 4: sau \texttt{dup} hai fd cùng trỏ một entry có \texttt{ref = 2}, đọc lần lượt ra \texttt{'a'} rồi \texttt{'b'}, và pid chỉ xuất hiện một lần trong danh sách process của file. Test 5: sau \texttt{fork} không có entry mới, \texttt{ref} của console tăng 3 (con nhận fd 0, 1, 2), con đọc \texttt{'a'} thì cha đọc tiếp ra \texttt{'b'}. Ngay cả con số \texttt{ref = 9} của console lúc đầu cũng giải thích được bằng các quy tắc này: \texttt{init} mở console một lần rồi \texttt{dup} hai lần (\texttt{ref = 3}), sau đó \texttt{init} fork ra \texttt{sh} và \texttt{sh} fork ra \texttt{sysinfotest}, mỗi lần fork cộng thêm 3.
+Việc \texttt{fork()} dùng chung offset là có chủ ý: shell dựa vào nó để các lệnh con ghi nối tiếp vào cùng một file khi chuyển hướng output \cite{xv6book}. Test 3, 4, 5 ở mục 6 kiểm chứng các tính chất trên. Ngay cả \texttt{ref = 9} của console lúc hệ thống mới chạy cũng giải thích được: \texttt{init} mở console rồi \texttt{dup} hai lần (\texttt{ref = 3}), sau đó \texttt{init} fork ra \texttt{sh} và \texttt{sh} fork ra \texttt{sysinfotest}, mỗi lần fork cộng thêm 3.

@@ -1,15 +1,10 @@
 \subsection{Cách kiểm thử}
 
-Chương trình \texttt{user/sysinfotest.c} gọi \texttt{sysinfo} trước và sau mỗi thao tác (\texttt{open}, \texttt{dup}, \texttt{fork}, \texttt{exit}, \ldots) rồi so sánh hai lần chụp. Mỗi kiểm tra in một dòng \texttt{[PASS]} hoặc \texttt{[FAIL]} kèm giá trị đo được, cuối chương trình in tổng số kiểm tra đạt và không đạt. Chương trình có ba cách chạy trong shell của xv6:
-\begin{itemize}
-    \item \texttt{sysinfotest}: chạy cả 17 test;
-    \item \texttt{sysinfotest 5 8}: chỉ chạy các test được liệt kê;
-    \item \texttt{sysinfotest show}: chỉ in danh sách open file và danh sách process tại thời điểm gọi.
-\end{itemize}
+Chương trình \texttt{user/sysinfotest.c} gọi \texttt{sysinfo} trước và sau mỗi thao tác (\texttt{open}, \texttt{dup}, \texttt{fork}, \texttt{exit}, \ldots) rồi so sánh hai lần chụp; mỗi kiểm tra in \texttt{[PASS]} hoặc \texttt{[FAIL]} kèm giá trị đo được. Chạy \texttt{sysinfotest} để chạy cả 17 test, \texttt{sysinfotest 5 8} để chỉ chạy một số test, hoặc \texttt{sysinfotest show} để chỉ in hai danh sách hiện tại.
 
-Ngoài các kiểm tra riêng của từng kịch bản, nhiều test còn kiểm tra hai tính chất chung của kết quả trả về. Thứ nhất, danh sách file và danh sách process phải khớp nhau: mỗi pid trong danh sách process của một file phải có fd trỏ tới file đó, và ngược lại. Thứ hai, khi không có process nào đang mở hay đóng file, \texttt{ref} của mỗi file phải bằng tổng số fd trỏ tới nó. Cuối mỗi test luôn có một kiểm tra \texttt{nfile} và \texttt{nproc} đã trở về như lúc bắt đầu, để chắc test đã dọn dẹp xong và không ảnh hưởng tới test sau.
+Ngoài kiểm tra riêng của từng kịch bản, nhiều test còn kiểm tra hai tính chất chung: danh sách file và danh sách process phải khớp nhau (pid trong danh sách của một file phải có fd trỏ tới file đó, và ngược lại), và \texttt{ref} của mỗi file phải bằng tổng số fd trỏ tới nó.
 
-Nhóm chạy chương trình trên QEMU với 3 CPU (mặc định của \texttt{make qemu}) ba lần liên tiếp và một lần với \texttt{make qemu CPUS=1}. Cả bốn lần đều đạt 118/118 kiểm tra và kernel không panic.
+Nhóm chạy trên QEMU ba lần với 3 CPU (mặc định của \texttt{make qemu}) và một lần với \texttt{CPUS=1}. Cả bốn lần đều đạt 118/118 kiểm tra và kernel không panic.
 
 \subsection{Tổng hợp các kịch bản}
 
@@ -39,9 +34,9 @@ Nhóm chạy chương trình trên QEMU với 3 CPU (mặc định của \texttt
 
 \subsection{Một số kết quả tiêu biểu}
 
-Các hình dưới đây là output thật của lần chạy với 3 CPU. Dòng \texttt{...} là chỗ đã lược bớt.
+Các hình dưới đây là output thật của lần chạy với 3 CPU; dòng \texttt{...} là chỗ đã lược bớt.
 
-\textbf{Trạng thái ban đầu (test 1).} Hệ thống chỉ có một open file là console, được 3 process dùng chung với \texttt{ref = 9} (mỗi process 3 fd, xem mục 3.3). \texttt{sysinfotest} là process duy nhất đang \texttt{RUNNING}, vì nó chính là process đang gọi \texttt{sysinfo}.
+\textbf{Trạng thái ban đầu (test 1).} Chỉ có một file đang mở là console, được 3 process dùng chung với \texttt{ref = 9} (mỗi process 3 fd, xem mục 3.3). \texttt{sysinfotest} là process duy nhất đang \texttt{RUNNING} vì nó chính là process đang gọi \texttt{sysinfo}.
 
 \begin{figure}[H]
 \begin{lstlisting}[style=ketqua]
@@ -63,24 +58,7 @@ Các hình dưới đây là output thật của lần chạy với 3 CPU. Dòng
 \caption{Kết quả test 1: danh sách open file và process lúc bắt đầu}
 \end{figure}
 
-\textbf{\texttt{open} với từng chế độ (test 2).} Mỗi lần \texttt{open} tạo một entry mới với \texttt{ref = 1}; quyền đọc/ghi đúng theo chế độ mở. Mở lại \texttt{console} cho entry \texttt{DEVICE} thứ hai (idx 5), khác với entry idx 0 mà fd 0, 1, 2 đang dùng.
-
-\begin{figure}[H]
-\begin{lstlisting}[style=ketqua]
-== test 2: open() with each mode, a directory and a device ==
-  open files: 6
-    idx  type    mode  ref  pids
-    0    DEVICE  rw    9    1 2 3
-    1    INODE   r-    1    3
-    2    INODE   -w    1    3
-    3    INODE   rw    1    3
-    4    INODE   r-    1    3
-    5    DEVICE  rw    1    3
-\end{lstlisting}
-\caption{Kết quả test 2: các entry do \texttt{open} tạo ra}
-\end{figure}
-
-\textbf{\texttt{fork} (test 5).} Con (pid 4) có \texttt{ppid = 3}, đúng các fd của cha và trỏ tới cùng các entry. Con đang \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được scheduler chọn lần nào.
+\textbf{\texttt{fork} (test 5).} Con (pid 4) có \texttt{ppid = 3}, có đúng các fd của cha và trỏ tới cùng các file. Con đang \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được chọn chạy lần nào.
 
 \begin{figure}[H]
 \begin{lstlisting}[style=ketqua]
@@ -103,26 +81,7 @@ Các hình dưới đây là output thật của lần chạy với 3 CPU. Dòng
 \caption{Kết quả test 5: process con ngay sau \texttt{fork}}
 \end{figure}
 
-\textbf{Process \texttt{ZOMBIE} (test 8).} Con đã gọi \texttt{exit(7)} nhưng cha chưa \texttt{wait}: ô của con vẫn còn trong bảng process ở trạng thái \texttt{ZOMBIE} và không còn fd nào, vì \texttt{exit()} đã đóng hết. Sau \texttt{wait}, ô được giải phóng và con không còn trong danh sách.
-
-\begin{figure}[H]
-\begin{lstlisting}[style=ketqua]
-== test 8: ZOMBIE until wait() ==
-  processes: 4
-    pid  ppid  state     nsched  name          fd->idx
-    ...
-    3    2     RUNNING   54      sysinfotest   0->0 1->0 2->0
-    6    3     ZOMBIE    1       sysinfotest
-  [PASS] state of exited child before wait() = ZOMBIE
-  [PASS] nfd of zombie (exit closed all fds) = 0
-  ...
-  [PASS] exit status = 7
-  [PASS] after wait() the child is no longer listed
-\end{lstlisting}
-\caption{Kết quả test 8: process con ở trạng thái \texttt{ZOMBIE}}
-\end{figure}
-
-\textbf{\texttt{RUNNING}/\texttt{RUNNABLE} và \texttt{nsched} (test 10, 11).} Bốn con chạy vòng lặp vô hạn trên 3 CPU nên luôn có con phải chờ ở \texttt{RUNNABLE}. Sau mỗi lần timer ngắt, process đang chạy phải \texttt{yield()} rồi được chọn lại, nên \texttt{nsched} của các con tăng liên tục. Ngược lại, con chờ trên pipe rỗng không được đánh thức nên \texttt{nsched} đứng yên.
+\textbf{Trạng thái chạy và \texttt{nsched} (test 10, 11).} Bốn con chạy vòng lặp vô hạn trên 3 CPU nên luôn có con chờ ở \texttt{RUNNABLE}, và \texttt{nsched} của chúng tăng sau mỗi lần bị ngắt timer rồi được chọn lại. Con chờ trên pipe rỗng không được đánh thức nên \texttt{nsched} đứng yên.
 
 \begin{figure}[H]
 \begin{lstlisting}[style=ketqua]
@@ -146,32 +105,4 @@ Các hình dưới đây là output thật của lần chạy với 3 CPU. Dòng
 \caption{Kết quả test 10 và 11: trạng thái chạy và bộ đếm \texttt{nsched}}
 \end{figure}
 
-\textbf{Giới hạn của hệ thống và con trỏ không hợp lệ (test 13--17).} Process mồ côi được chuyển cho \texttt{init}. Các bảng đầy (\texttt{NOFILE}, \texttt{NFILE}, \texttt{NPROC}) vẫn được \texttt{sysinfo} trả về đầy đủ. Mọi địa chỉ user không hợp lệ đều làm \texttt{sysinfo} trả về $-1$ mà không làm hỏng kernel hay process gọi.
-
-\begin{figure}[H]
-\begin{lstlisting}[style=ketqua]
-== test 13: orphan reparented to init ==
-  [PASS] ppid of orphan (reparented to init) = 1
-  [PASS] init reaps the orphan after it exits
-== test 14: per-process limit NOFILE ==
-  [PASS] nfd of sysinfotest = 16
-== test 15: system-wide limit NFILE ==
-  [PASS] nfile (system-wide file table full) = 100
-  [PASS] open() fails because ftable is full, not because of NOFILE
-== test 16: process table full (NPROC) ==
-  [PASS] nproc (process table full) = 64
-  [PASS] children forked until fork() failed = 61
-== test 17: bad user pointers ==
-  [PASS] sysinfo(0), page 0 is read-only text = -1
-  [PASS] sysinfo(0xeaeb0b5b00002f5e), above MAXVA = -1
-  [PASS] sysinfo(TRAPFRAME), kernel-only page = -1
-  [PASS] sysinfo(stack guard page) = -1
-  [PASS] sysinfo(heap end - 16), buffer runs past the heap = -1
-  [PASS] sysinfo(buffer from malloc) = 0
-  [PASS] sysinfo(&global) still works afterwards = 0
-
-sysinfotest: 118 passed, 0 failed
-sysinfotest: OK
-\end{lstlisting}
-\caption{Kết quả test 13--17 và tổng kết (đã lược bớt một số dòng)}
-\end{figure}
+Các test còn lại cho kết quả đúng như bảng ở trên: process \texttt{ZOMBIE} không còn fd và biến mất sau \texttt{wait}, process mồ côi được chuyển cho \texttt{init}, các bảng đầy (\texttt{NOFILE}, \texttt{NFILE}, \texttt{NPROC}) vẫn được liệt kê đầy đủ, và mọi địa chỉ user không hợp lệ đều làm \texttt{sysinfo} trả về $-1$ mà không làm hỏng kernel hay process gọi.

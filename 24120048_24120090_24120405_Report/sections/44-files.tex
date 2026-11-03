@@ -1,0 +1,18 @@
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|>{\raggedright\arraybackslash}X|c|}
+\hline
+\textbf{File} & \textbf{Thay đổi} & \textbf{Người} \\ \hline
+\texttt{kernel/sysinfo.h} & Viết lại: \texttt{struct sysinfo\_file}, \texttt{sysinfo\_proc}, \texttt{sysinfo} & A \\ \hline
+\texttt{kernel/sysproc.c} & \texttt{sys\_sysinfo()} & A \\ \hline
+\texttt{kernel/file.c} & \texttt{filecollect()}, \texttt{fileidx()} & A \\ \hline
+\texttt{kernel/proc.h} & Thêm trường \texttt{nsched} vào \texttt{struct proc} & C \\ \hline
+\texttt{kernel/proc.c} & Khởi tạo và tăng \texttt{nsched}, \texttt{proccollect()} (C); \texttt{procs\_using\_file()} (A) & A, C \\ \hline
+\texttt{kernel/defs.h} & Khai báo các hàm mới ở trên & A, C \\ \hline
+\texttt{kernel/syscall.h}, \texttt{syscall.c} & \texttt{SYS\_sysinfo} = 22, thêm \texttt{sys\_sysinfo} vào \texttt{syscalls[]} & C \\ \hline
+\texttt{user/usys.pl}, \texttt{user/user.h} & Stub \texttt{sysinfo}; khai báo \texttt{struct sysinfo;} và \texttt{int sysinfo(struct sysinfo *);} & C \\ \hline
+\texttt{Makefile} & Thêm \texttt{\$U/\_sysinfotest} vào \texttt{UPROGS} & C \\ \hline
+\texttt{user/sysinfotest.c} & Viết lại toàn bộ: 17 kịch bản kiểm thử (mục 6) & B \\ \hline
+\end{tabularx}
+\caption{Các file đã sửa đổi}
+\end{table}

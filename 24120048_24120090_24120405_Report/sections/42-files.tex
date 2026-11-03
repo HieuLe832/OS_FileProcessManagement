@@ -1,49 +1,14 @@
-Phần thu thập thông tin về các tập tin đang mở trên hệ thống đòi hỏi sự kết hợp chặt chẽ giữa việc trích xuất dữ liệu từ bảng \texttt{ftable} và tra cứu ngược danh sách các tiến trình đang sở hữu file descriptor trỏ tới từng tập tin.
+\textbf{\texttt{fileidx(f)}} (\texttt{kernel/file.c}) trả về vị trí của \texttt{f} trong \texttt{ftable.file[]}, tức \texttt{f - ftable.file}, hoặc $-1$ nếu \texttt{f} không thuộc bảng. \texttt{ftable} được khai báo bằng struct ẩn danh nên chỉ dùng được trong \texttt{file.c}; \texttt{proccollect()} ở \texttt{proc.c} cần hàm này để đổi con trỏ trong \texttt{ofile[]} thành \texttt{idx}.
 
-\subsubsection{Cài đặt hàm \texttt{fileidx()}}
+\textbf{\texttt{procs\_using\_file(f, pids)}} (\texttt{kernel/proc.c}) duyệt \texttt{proc[]}. Với mỗi process khác \texttt{UNUSED}, hàm giữ \texttt{p->lock} trong lúc quét \texttt{ofile[]} tìm ô trỏ tới \texttt{f}, và dừng ngay ở ô đầu tiên tìm thấy. Nhờ vậy một process có nhiều fd tới cùng một file (sau \texttt{dup}) chỉ được ghi pid một lần, và số pid không vượt quá \texttt{NPROC}, vừa với mảng \texttt{pids}.
 
-Hàm \texttt{fileidx()} được bổ sung vào \texttt{kernel/file.c} nhằm ánh xạ từ con trỏ \texttt{struct file *f} sang chỉ số nguyên trong bảng \texttt{ftable.file[]}: hàm trả về \texttt{f - ftable.file}, hoặc $-1$ nếu \texttt{f} không nằm trong bảng.
-
-Hàm này cho phép thành viên phụ trách phần Process (thành viên C) khi duyệt qua mảng \texttt{ofile[]} của tiến trình có thể dễ dàng chuyển đổi con trỏ tập tin thành một chỉ số định danh thống nhất (\texttt{fidx}), từ đó liên kết chính xác giữa tiến trình và tập tin tương ứng trong báo cáo \texttt{sysinfo}.
-
-\subsubsection{Cài đặt hàm tra cứu tiến trình \texttt{procs\_using\_file()}}
-
-Để xác định những tiến trình nào đang mở một tập tin \texttt{f}, hàm \texttt{procs\_using\_file(f, pids)} được cài đặt trong \texttt{kernel/proc.c} (nơi nắm giữ mảng toàn cục \texttt{proc[NPROC]}). Hàm duyệt \texttt{proc[]}; với mỗi tiến trình khác \texttt{UNUSED}, hàm giữ \texttt{p->lock} trong lúc quét \texttt{ofile[]} tìm ô trỏ tới \texttt{f}, nhả khóa rồi mới ghi pid vào mảng \texttt{pids}. Hàm trả về số pid tìm được.
-
-\textbf{Các điểm kỹ thuật quan trọng}:
-\begin{itemize}
-    \item \textbf{Khóa bảo vệ từng tiến trình}: Với mỗi tiến trình \texttt{p}, hàm lấy khóa \texttt{acquire(\&p->lock)} để đảm bảo trạng thái \texttt{p->state} và mảng \texttt{p->ofile} được kiểm tra một cách nhất quán, tránh đọc phải tiến trình đang trong trạng thái khởi tạo dở dang hoặc đang giải phóng.
-    \item \textbf{Loại trừ PID trùng lặp}: Sau khi thực hiện lệnh \texttt{dup()} hoặc mở cùng một file trên nhiều descriptor khác nhau trong cùng một tiến trình, \texttt{p->ofile[]} có thể chứa nhiều ô cùng trỏ tới con trỏ \texttt{f}. Vòng lặp kiểm tra sử dụng cờ \texttt{found} và lệnh \texttt{break} ngay khi tìm thấy descriptor đầu tiên, đảm bảo mỗi PID chỉ được đưa vào danh sách \texttt{pids[]} đúng một lần duy nhất.
-    \item \textbf{An toàn bộ đệm}: Do hệ thống xv6 chỉ có tối đa \texttt{NPROC} tiến trình và mỗi tiến trình chỉ được thêm tối đa một lần, số lượng phần tử \texttt{npids} luôn thỏa mãn $0 \le \texttt{npids} \le \texttt{NPROC}$, hoàn toàn không có nguy cơ tràn mảng \texttt{pids[NPROC]}.
-\end{itemize}
-
-\subsubsection{Cài đặt hàm thu thập chính \texttt{filecollect()}}
-
-Hàm \texttt{filecollect(addr)} trong \texttt{kernel/file.c} duyệt qua toàn bộ bảng \texttt{ftable} và sao chép thông tin từng tập tin vào không gian người dùng. Với mỗi ô thứ $i$ của \texttt{ftable.file[]}:
+\textbf{\texttt{filecollect(addr)}} (\texttt{kernel/file.c}) duyệt từng ô $i$ của \texttt{ftable.file[]}:
 \begin{enumerate}
-    \item Lấy \texttt{ftable.lock}. Nếu ô có \texttt{ref == 0} thì nhả khóa và bỏ qua ô này.
-    \item Xóa biến cục bộ \texttt{sf} bằng \texttt{memset}, chép \texttt{idx = i}, \texttt{type}, \texttt{readable}, \texttt{writable}, \texttt{ref} vào \texttt{sf}, rồi nhả \texttt{ftable.lock}.
-    \item Gọi \texttt{procs\_using\_file()} để điền \texttt{npids} và \texttt{pids} (lúc này không còn giữ \texttt{ftable.lock}).
-    \item \texttt{copyout} biến \texttt{sf} vào phần tử thứ \texttt{count} của mảng \texttt{files} ở phía user rồi tăng \texttt{count}; nếu \texttt{copyout} lỗi thì trả về $-1$.
+    \item Lấy \texttt{ftable.lock}. Ô có \texttt{ref == 0} thì nhả khóa và bỏ qua.
+    \item Xóa biến cục bộ \texttt{sf} bằng \texttt{memset} (để các phần tử thừa của \texttt{pids} không mang dữ liệu cũ trên kernel stack ra user), chép \texttt{idx = i}, \texttt{type}, \texttt{readable}, \texttt{writable}, \texttt{ref}, rồi nhả \texttt{ftable.lock}.
+    \item Gọi \texttt{procs\_using\_file()} để điền \texttt{npids} và \texttt{pids}.
+    \item \texttt{copyout} \texttt{sf} vào phần tử thứ \texttt{count} của \texttt{files} rồi tăng \texttt{count}; \texttt{copyout} lỗi thì trả về $-1$.
 \end{enumerate}
-Cuối cùng hàm trả về \texttt{count}, chính là số file đang mở.
+Cuối cùng hàm trả về \texttt{count}, là số file đang mở.
 
-\subsubsection{Chiến lược đồng bộ, Xử lý Concurrency và Phòng ngừa Deadlock}
-
-Trong quá trình thiết kế và cài đặt, hai vấn đề đồng bộ cốt lõi đã được giải quyết một cách triệt để:
-
-\begin{enumerate}
-    \item \textbf{Tuyệt đối không gọi \texttt{copyout()} khi đang giữ Spinlock}:
-    Hàm \texttt{copyout()} có thể tốn nhiều chu kỳ máy để dịch địa chỉ ảo sang địa chỉ vật lý và sao chép bộ nhớ giữa các trang. Giữ một spinlock (như \texttt{ftable.lock}) trong suốt quá trình này sẽ làm vô hiệu hóa ngắt trên CPU cục bộ trong thời gian dài và khiến các CPU khác bị nghẽn (spinning) lãng phí. Do đó, khóa \texttt{ftable.lock} luôn được giải phóng trước khi gọi \texttt{copyout()}.
-    
-    \item \textbf{Phòng tránh Deadlock giữa \texttt{ftable.lock} và \texttt{p->lock}}:
-    \begin{itemize}
-        \item Trong thiết kế ban đầu của xv6, không có một quy ước thứ tự phân cấp (lock ordering hierarchy) định trước giữa khóa bảng tập tin \texttt{ftable.lock} và khóa tiến trình \texttt{p->lock}.
-        \item Nếu trong hàm \texttt{filecollect()}, kernel giữ \texttt{ftable.lock} rồi gọi \texttt{procs\_using\_file()} (hàm này lần lượt acquire \texttt{p->lock}), đồng thời trên một CPU khác có một tiến trình đang gọi \texttt{sys\_open()} hoặc \texttt{sys\_close()} (tiến trình này đang giữ \texttt{p->lock} và cố gắng acquire \texttt{ftable.lock}), hệ thống sẽ lập tức rơi vào \textbf{vòng tròn chờ đợi (circular wait)} và gây ra \textbf{Deadlock} treo cứng toàn bộ hệ thống.
-        \item \textbf{Kỹ thuật Snapshot giải quyết}: Kernel áp dụng kỹ thuật chụp trạng thái (snapshot): Khi duyệt tới một file hợp lệ, kernel lấy \texttt{ftable.lock}, sao chép nhanh các thuộc tính cơ bản (\texttt{type}, \texttt{readable}, \texttt{writable}, \texttt{ref}) vào biến cục bộ \texttt{sf} trên stack, và \textbf{lập tức giải phóng \texttt{ftable.lock}}. Sau khi đã nhả khóa, hàm mới an toàn gọi \texttt{procs\_using\_file()} để tra cứu các tiến trình sở hữu.
-    \end{itemize}
-    
-    \item \textbf{Tính nhất quán của dữ liệu thống kê (Statistical Snapshot)}:
-    Việc giải phóng \texttt{ftable.lock} trước khi tra cứu tiến trình đồng nghĩa với việc có một cửa sổ thời gian rất nhỏ (race window) mà một tiến trình khác có thể vừa đóng (\texttt{close}) tập tin. Tuy nhiên, đối với một system call mang tính chất điều tra, quan sát và thống kê hệ thống như \texttt{sysinfo}, việc chấp nhận dữ liệu phản ánh trạng thái nhất quán tại thời điểm lấy mẫu (snapshot at sampling time) là hoàn toàn hợp lý, chuẩn mực trong thiết kế hệ điều hành, vừa bảo đảm an toàn hệ thống, vừa giữ được hiệu năng cao nhất.
-\end{enumerate}
-
+\textbf{Khóa.} \texttt{ftable.lock} được nhả trước bước 3 và 4 vì hai lý do. Thứ nhất, xv6 không quy định thứ tự giữa \texttt{ftable.lock} và \texttt{p->lock}, nên nhóm không bao giờ giữ cả hai cùng lúc để khỏi lo deadlock. Thứ hai, \texttt{copyout()} phải đi qua page table của user và có thể chậm, không nên làm trong lúc giữ spinlock (ngắt bị tắt, các CPU khác cần khóa phải quay chờ). Cái giá phải trả là kết quả không nhất quán tuyệt đối, xem mục 5.

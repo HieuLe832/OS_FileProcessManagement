@@ -1,83 +1,49 @@
-Trong hệ điều hành xv6, mỗi tiến trình được đại diện bởi một cấu trúc \texttt{struct proc} (\texttt{kernel/proc.h}). Bảng tiến trình toàn cục \texttt{proc[NPROC]} gồm tối đa $64$ phần tử (\texttt{NPROC = 64}). Dưới đây là phân tích chi tiết về 3 trường quan trọng liên quan đến định danh, trạng thái vòng đời và chuyển ngữ cảnh:
+Mỗi process là một \texttt{struct proc} (\texttt{kernel/proc.h}) trong bảng \texttt{proc[NPROC]}, với \texttt{NPROC} = 64.
 
-\subsubsection{Trường \texttt{pid} (Process Identifier)}
+\textbf{\texttt{pid}} được gán trong \texttt{allocproc()} bằng \texttt{allocpid()}. Hàm này tăng biến toàn cục \texttt{nextpid} dưới khóa \texttt{pid\_lock}, nên mỗi process nhận một pid riêng kể cả khi nhiều CPU cùng fork. \texttt{nextpid} chỉ tăng, pid của process đã kết thúc không được dùng lại.
+
+\textbf{\texttt{state}} nhận một trong 6 giá trị của \texttt{enum procstate}, chuyển đổi như Hình~\ref{fig:procstate}:
 \begin{itemize}
-    \item \textbf{Cơ chế cấp phát:} Trường \texttt{pid} được cấp phát trong hàm \texttt{allocproc()} (\texttt{kernel/proc.c}) thông qua hàm trợ giúp \texttt{allocpid()}. Biến toàn cục \texttt{nextpid} được bảo vệ bởi khóa \texttt{pid\_lock}:
-    \begin{itemize}
-        \item Khi một tiến trình được tạo mới, hàm lấy khóa \texttt{acquire(\&pid\_lock)}, tăng \texttt{nextpid} lên $1$ đơn vị và gán giá trị này cho tiến trình mới, sau đó giải phóng khóa.
-        \item Cơ chế này đảm bảo tính đơn điệu tăng dần của PID trên hệ thống đa lõi (multi-core SMP).
-    \end{itemize}
-    \item \textbf{Không tái sử dụng PID:} Trong xv6, \texttt{nextpid} chỉ tăng dần mà không quay vòng hay tái sử dụng lại các PID của tiến trình đã kết thúc. Điều này giúp loại trừ hoàn toàn nguy cơ tranh chấp race condition khi một tiến trình gửi tín hiệu (ví dụ \texttt{kill()}) đến một PID cũ vừa bị tái sử dụng cho tiến trình khác.
+    \item \texttt{UNUSED}: ô trống; \texttt{USED}: vừa được \texttt{allocproc()} lấy, đang khởi tạo;
+    \item \texttt{RUNNABLE}: sẵn sàng chạy, chờ CPU; \texttt{RUNNING}: đang chạy trên một CPU;
+    \item \texttt{SLEEPING}: đang chờ một sự kiện trong \texttt{sleep()}; \texttt{ZOMBIE}: đã \texttt{exit()} nhưng cha chưa \texttt{wait()}.
 \end{itemize}
+Đọc hay ghi \texttt{state} đều phải giữ \texttt{p->lock}. Nếu không, hai CPU có thể cùng thấy một process \texttt{RUNNABLE} và cùng chạy nó.
 
-\subsubsection{Trường \texttt{state} và Vòng đời tiến trình (Process Lifecycle)}
-Trường \texttt{state} có kiểu \texttt{enum procstate} gồm 6 trạng thái cơ bản:
-\begin{center}
-\begin{tabular}{|l|l|}
-\hline
-\textbf{Trạng thái} & \textbf{Ý nghĩa} \\ \hline
-\texttt{UNUSED} & Slot trong bảng \texttt{proc[]} đang trống, chưa có tiến trình nào chiếm giữ. \\ \hline
-\texttt{USED} & Slot vừa được \texttt{allocproc()} cấp phát và đang trong quá trình thiết lập. \\ \hline
-\texttt{RUNNABLE} & Tiến trình đã sẵn sàng để thực thi, đang nằm trong hàng đợi chờ CPU. \\ \hline
-\texttt{RUNNING} & Tiến trình đang thực sự được một lõi CPU thực thi lệnh. \\ \hline
-\texttt{SLEEPING} & Tiến trình đang bị chặn, chờ đợi một sự kiện (kênh \texttt{chan}) qua \texttt{sleep()}. \\ \hline
-\texttt{ZOMBIE} & Tiến trình đã gọi \texttt{exit()} nhưng cha của nó chưa gọi \texttt{wait()} để thu gom. \\ \hline
-\end{tabular}
-\end{center}
-
-\paragraph{Sơ đồ chuyển trạng thái:}
-\begin{center}
-\begin{tikzpicture}[->, >=stealth, node distance=2.2cm, auto,
-  state_node/.style={circle, draw=blue!70, fill=blue!10, very thick, minimum size=1.3cm, font=\small\bfseries},
-  scale=0.95, every node/.style={transform shape}]
-
-  \node[state_node] (unused) {\texttt{UNUSED}};
-  \node[state_node, right of=unused, xshift=1.5cm] (used) {\texttt{USED}};
-  \node[state_node, right of=used, xshift=2.0cm] (runnable) {\texttt{RUNNABLE}};
-  \node[state_node, below of=runnable, yshift=-1.5cm] (running) {\texttt{RUNNING}};
-  \node[state_node, left of=running, xshift=-2.0cm] (sleeping) {\texttt{SLEEPING}};
-  \node[state_node, below of=unused, yshift=-1.5cm] (zombie) {\texttt{ZOMBIE}};
-
-  % Transitions
-  \path[thick]
-    (unused) edge node[above, font=\footnotesize] {\texttt{allocproc()}} (used)
-    (used) edge node[above, font=\footnotesize] {\texttt{fork() / userinit()}} (runnable)
-    (runnable) edge[bend left=20] node[right, font=\footnotesize] {\texttt{scheduler()}} (running)
-    (running) edge[bend left=20] node[left, font=\footnotesize] {\texttt{yield()}} (runnable)
-    (running) edge node[above, font=\footnotesize] {\texttt{sleep()}} (sleeping)
-    (sleeping) edge[bend left=20] node[above, font=\footnotesize] {\texttt{wakeup()}} (runnable)
-    (running) edge[bend left=35] node[below, font=\footnotesize] {\texttt{exit()}} (zombie)
-    (zombie) edge node[left, font=\footnotesize] {\texttt{wait() / freeproc()}} (unused);
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[->, >=stealth, thick,
+  st/.style={circle, draw=blue!70, fill=blue!10, minimum size=1.5cm, font=\scriptsize\ttfamily},
+  lb/.style={font=\scriptsize\ttfamily}]
+  \node[st] (unused)   at (0,0)     {UNUSED};
+  \node[st] (used)     at (3.4,0)   {USED};
+  \node[st] (runnable) at (8.4,0)   {RUNNABLE};
+  \node[st] (running)  at (8.4,-3.4) {RUNNING};
+  \node[st] (sleeping) at (4.2,-3.4) {SLEEPING};
+  \node[st] (zombie)   at (0,-3.4)  {ZOMBIE};
+  \draw (unused) -- node[lb, above] {allocproc()} (used);
+  \draw (used) -- node[lb, above] {fork() / userinit()} (runnable);
+  \draw (runnable) to[bend left=25] node[lb, right] {scheduler()} (running);
+  \draw (running) to[bend left=25] node[lb, left] {yield()} (runnable);
+  \draw (running) -- node[lb, below] {sleep()} (sleeping);
+  \draw (sleeping) -- node[lb, above left] {wakeup()} (runnable);
+  \draw (running) to[bend left=30] node[lb, below] {exit()} (zombie);
+  \draw (zombie) -- node[lb, left] {wait()} (unused);
 \end{tikzpicture}
-\end{center}
+\caption{Các trạng thái của process và hàm gây ra mỗi lần chuyển}
+\label{fig:procstate}
+\end{figure}
 
-\paragraph{Quy tắc đồng bộ khóa \texttt{p->lock}:}
-Bất kỳ thao tác đọc hoặc ghi nào lên trường \texttt{state} đều bắt buộc phải giữ spinlock \texttt{p->lock}. Lý do:
-\begin{itemize}
-    \item Trên hệ thống đa CPU, hàm \texttt{scheduler()} trên từng CPU liên tục duyệt qua bảng \texttt{proc[]} để tìm tiến trình ở trạng thái \texttt{RUNNABLE}. Nếu không có \texttt{p->lock}, hai CPU có thể cùng lúc thấy một tiến trình là \texttt{RUNNABLE} và cùng chọn nó vào chạy, dẫn đến xung đột bộ nhớ nghiêm trọng.
-    \item Việc chuyển trạng thái sang \texttt{SLEEPING} hoặc \texttt{ZOMBIE} đi kèm với các thao tác chuyển luồng điều khiển; khóa \texttt{p->lock} bảo vệ tính nguyên tử của cả chuỗi thao tác này.
-\end{itemize}
+\textbf{\texttt{context}} chứa các thanh ghi \texttt{ra}, \texttt{sp} và \texttt{s0}--\texttt{s11} của kernel thread lúc nó rời CPU. \texttt{swtch()} (\texttt{kernel/swtch.S}) lưu các thanh ghi này vào context cũ và nạp từ context mới, nên lệnh \texttt{ret} cuối \texttt{swtch()} nhảy tới \texttt{ra} của thread mới. Chỉ cần lưu thanh ghi callee-saved vì \texttt{swtch()} được gọi như một hàm C, các thanh ghi còn lại đã được trình biên dịch lưu trên stack. \texttt{context} khác với \texttt{trapframe}:
 
-\subsubsection{Trường \texttt{context} và Chuyển ngữ cảnh (Context Switching)}
-Cấu trúc \texttt{struct context} (\texttt{kernel/proc.h}) chứa $14$ trường thanh ghi 64-bit của kiến trúc RISC-V:
-\begin{itemize}
-    \item \texttt{ra}: Return Address (địa chỉ lệnh sẽ quay về khi kết thúc hàm).
-    \item \texttt{sp}: Stack Pointer (con trỏ đỉnh ngăn xếp của kernel thread).
-    \item \texttt{s0} -- \texttt{s11}: Callee-saved registers (các thanh ghi mà hàm được gọi có nghĩa vụ bảo toàn giá trị cho hàm gọi nó theo quy ước gọi hàm của RISC-V ABI).
-\end{itemize}
-
-\needspace{12\baselineskip}
-\paragraph{Phân biệt \texttt{struct context} và \texttt{struct trapframe}:}\leavevmode
 \begin{table}[H]
 \centering
-\begin{tabularx}{\textwidth}{|l|X|X|}
+\begin{tabularx}{\textwidth}{|l|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
 \hline
-\textbf{Tiêu chí} & \textbf{\texttt{struct context}} & \textbf{\texttt{struct trapframe}} \\ \hline
-\textbf{Không gian lưu} & Kernel context & User context \\ \hline
-\textbf{Mục đích} & Chuyển đổi giữa 2 \textbf{kernel thread} (giữa tiến trình và vòng lặp \texttt{scheduler()}). & Lưu trữ trạng thái của \textbf{chương trình người dùng} khi xảy ra ngắt/ngoại lệ/syscall. \\ \hline
-\textbf{Tập thanh ghi lưu} & Chỉ lưu các thanh ghi \textbf{callee-saved} (\texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11}). Các thanh ghi caller-saved tự động được lưu trên kernel stack nhờ trình biên dịch C. & Lưu \textbf{toàn bộ thanh ghi người dùng} ($32$ thanh ghi RISC-V) vì tiến trình user có thể bị ngắt tại bất kỳ lệnh assembly nào. \\ \hline
-\textbf{Cơ chế thực hiện} & Hàm hợp ngữ \texttt{swtch()} (\texttt{kernel/swtch.S}) được gọi tường minh từ mã C trong kernel. & Mã hợp ngữ \texttt{uservec} / \texttt{userret} trong \texttt{kernel/trampoline.S} khi chuyển chế độ U-mode $\leftrightarrow$ S-mode. \\ \hline
-\textbf{Vị trí lưu trữ} & Nằm trực tiếp bên trong \texttt{struct proc} của tiến trình hoặc \texttt{struct cpu} của CPU. & Một trang bộ nhớ riêng (\texttt{PGSIZE = 4KB}) ánh xạ ngay dưới trang trampoline trong không gian địa chỉ tiến trình. \\ \hline
+ & \textbf{\texttt{context}} & \textbf{\texttt{trapframe}} \\ \hline
+Lưu gì & \texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11} của kernel thread & Toàn bộ 32 thanh ghi user và \texttt{epc} \\ \hline
+Khi nào & Chuyển giữa process và scheduler (\texttt{swtch()}) & Mỗi lần trap từ user vào kernel (\texttt{uservec}, \texttt{userret}) \\ \hline
+Nằm ở đâu & Trong \texttt{struct proc} (của scheduler thì trong \texttt{struct cpu}) & Một trang riêng, map ngay dưới trang trampoline \\ \hline
 \end{tabularx}
-\caption{So sánh giữa \texttt{struct context} và \texttt{struct trapframe}}
+\caption{So sánh \texttt{context} và \texttt{trapframe}}
 \end{table}

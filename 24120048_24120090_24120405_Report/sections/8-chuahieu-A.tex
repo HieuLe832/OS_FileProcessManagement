@@ -1,3 +1,1 @@
-\item \textbf{Tính nhất quán tuyến tính hóa (Linearizability) so với Snapshot Consistency:}
-Trong một hệ điều hành thực tế chạy trên nhiều lõi CPU với tần suất mở/đóng tập tin cực lớn, việc lấy một ``bức ảnh'' hoàn toàn nhất quán tại cùng một khoảnh khắc (point-in-time consistency) trên toàn hệ thống mà không phải tạm dừng mọi lõi CPU (stop-the-world) là một bài toán rất phức tạp. Nhóm mong muốn tìm hiểu sâu hơn về các cơ chế Read-Copy-Update (RCU) hoặc lock-free data structures được áp dụng trong nhân Linux hiện đại để giải quyết bài toán này.
-
+\item \textbf{Lấy một bản chụp nhất quán của cả hệ thống.} \texttt{sysinfo} chỉ cho kết quả khớp nhau khi hệ thống đang yên (mục 5). Nhóm chưa rõ một hệ điều hành thật như Linux làm thế nào để liệt kê process và file đang mở một cách nhất quán mà không phải dừng mọi CPU hay giữ cùng lúc nhiều khóa, ví dụ các kỹ thuật như RCU giúp được tới đâu.
