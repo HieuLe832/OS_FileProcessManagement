@@ -4,6 +4,7 @@ user/
 CLAUDE.md
 fs.img
 *.pdf
+!24120048_24120090_24120405_Report/main.pdf
 *.md
 # LaTeX build output
 *.aux
