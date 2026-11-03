@@ -18,3 +18,4 @@ fs.img
 *.fdb_latexmk
 *.synctex.gz
 _minted*/
+!main.pdf
