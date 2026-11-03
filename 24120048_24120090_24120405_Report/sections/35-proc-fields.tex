@@ -66,7 +66,8 @@ Cấu trúc \texttt{struct context} (\texttt{kernel/proc.h}) chứa $14$ trườ
     \item \texttt{s0} -- \texttt{s11}: Callee-saved registers (các thanh ghi mà hàm được gọi có nghĩa vụ bảo toàn giá trị cho hàm gọi nó theo quy ước gọi hàm của RISC-V ABI).
 \end{itemize}
 
-\paragraph{Phân biệt \texttt{struct context} và \texttt{struct trapframe}:}
+\needspace{12\baselineskip}
+\paragraph{Phân biệt \texttt{struct context} và \texttt{struct trapframe}:}\leavevmode
 \begin{table}[H]
 \centering
 \begin{tabularx}{\textwidth}{|l|X|X|}

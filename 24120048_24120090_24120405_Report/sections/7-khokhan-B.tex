@@ -5,6 +5,13 @@
     \item \textit{Giải quyết:} Vòng chờ gọi \texttt{sysinfo} liên tục, không ngủ, và giới hạn thời gian bằng \texttt{uptime()}. Từ lỗi này nhóm hiểu thêm: process trong \texttt{sleep(n)} thực ra được đưa lên CPU lại ở mỗi tick, nên \texttt{nsched} của nó vẫn tăng (test 11: từ 1 lên 5 sau 5 tick). Process chờ trên pipe chỉ được đánh thức khi có dữ liệu nên \texttt{nsched} đứng yên.
 \end{itemize}
 
+\item \textbf{Test 8 thỉnh thoảng thấy process \texttt{ZOMBIE} vẫn còn giữ file:}
+\begin{itemize}
+    \item \textit{Hiện tượng:} Có lần chạy chỉ đạt 117/118, kiểm tra \texttt{zombie is not in pids of any file} bị \texttt{FAIL}: con đã là \texttt{ZOMBIE}, không còn fd nào, nhưng pid của nó vẫn nằm trong danh sách process của console.
+    \item \textit{Phân tích:} Một lần gọi \texttt{sysinfo} lấy danh sách file trước, danh sách process sau. Lúc lấy danh sách file, con vẫn đang chạy trong \texttt{exit()} và còn giữ fd 0, 1, 2; tới lúc lấy danh sách process thì con đã đóng hết fd và thành \texttt{ZOMBIE}. Vòng chờ dừng đúng ở lần chụp này, nên hai danh sách trong cùng một lần chụp không khớp nhau.
+    \item \textit{Giải quyết:} Sau khi thấy con là \texttt{ZOMBIE}, test gọi \texttt{sysinfo} thêm một lần rồi mới kiểm tra. \texttt{ZOMBIE} không thay đổi gì cho tới khi cha gọi \texttt{wait}, nên lần chụp sau chắc chắn nhất quán. Đây là lỗi của test, không phải của kernel.
+\end{itemize}
+
 \item \textbf{Máy không có sẵn trình biên dịch RISC-V và QEMU:}
 \begin{itemize}
     \item \textit{Giải quyết:} Nhóm dựng một Docker image Ubuntu 24.04 có \texttt{gcc-riscv64-linux-gnu} và \texttt{qemu-system-misc}, mount thư mục mã nguồn vào để \texttt{make qemu}. Nhóm dùng thêm \texttt{expect} để tự động gõ \texttt{sysinfotest} vào shell của xv6, nhờ vậy chạy lại toàn bộ test nhiều lần (3 lần với 3 CPU, 1 lần với \texttt{CPUS=1}) để chắc kết quả không phụ thuộc thời điểm chạy.
