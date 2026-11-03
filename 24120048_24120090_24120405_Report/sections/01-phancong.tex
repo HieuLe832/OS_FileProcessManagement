@@ -1,23 +1,27 @@
-\begin{table}[h!]
+% \nv{...}: một ý trong cột Nhiệm vụ, dòng xuống hàng thụt vào thẳng với chữ đầu tiên.
+\providecommand{\nv}[1]{\par\noindent\hangindent=1em\hangafter=1\makebox[1em][l]{--}#1}
+
+\begin{table}[H]
 \centering
-\begin{tabularx}{\textwidth}{|c|c|X|c|}
+\renewcommand{\tabularxcolumn}[1]{m{#1}}
+\begin{tabularx}{\textwidth}{|c|c|>{\raggedright\arraybackslash}X|>{\centering\arraybackslash}m{1.9cm}|}
 \hline
-\textbf{MSSV} & \textbf{Họ và Tên} & \textbf{Nhiệm vụ} & \textbf{Mức độ đóng góp} \\ \hline
-24120048 & Lê Hoàng Hiếu & - Tìm hiểu và báo cáo: so sánh cách dùng file descriptor trong \texttt{open()}, \texttt{dup()}, \texttt{fork()}; trace system call \texttt{fork}.
-
-- Viết chương trình kiểm thử \texttt{user/sysinfotest.c}.
-
-- Dựng khung báo cáo, viết mục thông tin nhóm, mức độ hoàn thành và kết quả kiểm thử. & 100\% \\ \hline
-24120090 & Đặng Hồng Minh & - Tìm hiểu và báo cáo: các trường \texttt{pid}, \texttt{state}, \texttt{context} của \texttt{struct proc}; cơ chế lập lịch trong \texttt{scheduler()}, \texttt{sched()}, \texttt{yield()}.
-
-- Đăng ký system call \texttt{sysinfo} (\texttt{syscall.h}, \texttt{syscall.c}, \texttt{usys.pl}, \texttt{user.h}, \texttt{Makefile}).
-
-- Thêm bộ đếm \texttt{nsched} vào \texttt{struct proc}, viết \texttt{proccollect()} thu thập danh sách process. & 100\% \\ \hline
-24120405 & Đinh Tiến Phát & - Tìm hiểu và báo cáo: trường \texttt{ofile[]} của \texttt{struct proc} và \texttt{file[]} của \texttt{ftable}; trace system call \texttt{open}.
-
-- Thiết kế \texttt{struct sysinfo} (\texttt{kernel/sysinfo.h}), viết \texttt{sys\_sysinfo()}.
-
-- Viết \texttt{filecollect()}, \texttt{fileidx()}, \texttt{procs\_using\_file()} thu thập danh sách open file. & 100\% \\ \hline
+\textbf{MSSV} & \textbf{Họ và tên} & \centering\textbf{Nhiệm vụ} & \textbf{Mức độ đóng góp} \\ \hline
+24120048 & Lê Hoàng Hiếu &
+\nv{Tìm hiểu và báo cáo: so sánh cách dùng file descriptor trong \texttt{open()}, \texttt{dup()}, \texttt{fork()}; trace system call \texttt{fork}.}
+\nv{Viết chương trình kiểm thử \texttt{user/sysinfotest.c}.}
+\nv{Dựng khung báo cáo, viết mục thông tin nhóm, mức độ hoàn thành và kết quả kiểm thử.}
+& 100\% \\ \hline
+24120090 & Đặng Hồng Minh &
+\nv{Tìm hiểu và báo cáo: các trường \texttt{pid}, \texttt{state}, \texttt{context} của \texttt{struct proc}; cơ chế lập lịch trong \texttt{scheduler()}, \texttt{sched()}, \texttt{yield()}.}
+\nv{Đăng ký system call \texttt{sysinfo} (\texttt{syscall.h}, \texttt{syscall.c}, \texttt{usys.pl}, \texttt{user.h}, \texttt{Makefile}).}
+\nv{Thêm bộ đếm \texttt{nsched} vào \texttt{struct proc}, viết \texttt{proccollect()} thu thập danh sách process.}
+& 100\% \\ \hline
+24120405 & Đinh Tiến Phát &
+\nv{Tìm hiểu và báo cáo: trường \texttt{ofile[]} của \texttt{struct proc} và \texttt{file[]} của \texttt{ftable}; trace system call \texttt{open}.}
+\nv{Thiết kế \texttt{struct sysinfo} (\texttt{kernel/sysinfo.h}), viết \texttt{sys\_sysinfo()}.}
+\nv{Viết \texttt{filecollect()}, \texttt{fileidx()}, \texttt{procs\_using\_file()} thu thập danh sách open file.}
+& 100\% \\ \hline
 \end{tabularx}
 \end{table}
 
