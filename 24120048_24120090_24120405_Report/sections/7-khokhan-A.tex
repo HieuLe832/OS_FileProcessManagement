@@ -19,6 +19,6 @@
 \item \textbf{Phát triển song song không phụ thuộc vào thành viên khác:}
 \begin{itemize}
     \item \textit{Phân tích:} Phần cài đặt của A cần gọi hàm \texttt{proccollect()} do thành viên C phụ trách. Nếu C chưa hoàn thành mã nguồn, trình liên kết (linker) sẽ báo lỗi \textit{undefined reference} và không thể build kiểm thử.
-    \item \textit{Giải quyết:} Khai báo hàm \texttt{proccollect()} dưới dạng liên kết yếu (\texttt{\_\_attribute\_\_((weak))}) trong \texttt{kernel/sysproc.c}. Nhờ đó, mã nguồn của A vẫn biên dịch và kiểm thử độc lập thành công. Khi thành viên C hoàn thành phần cài đặt chính thức trong \texttt{kernel/proc.c}, hàm của C sẽ tự động ghi đè lên hàm yếu mà không gây xung đột.
+    \item \textit{Giải quyết:} Khai báo hàm \texttt{proccollect()} dưới dạng liên kết yếu (\texttt{\_\_attribute\_\_((weak))}) trong \texttt{kernel/sysproc.c}. Nhờ đó, mã nguồn của A vẫn biên dịch và kiểm thử độc lập thành công. Khi thành viên C hoàn thành phần cài đặt chính thức trong \texttt{kernel/proc.c}, hàm của C sẽ tự động ghi đè lên hàm yếu mà không gây xung đột. Khi ghép code, nhóm đã xóa stub này, bản nộp chỉ còn \texttt{proccollect()} trong \texttt{kernel/proc.c}.
 \end{itemize}
 

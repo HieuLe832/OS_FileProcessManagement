@@ -1,9 +1,9 @@
 \item \textbf{Tràn Kernel Stack 4KB do kích thước lớn của \texttt{struct sysinfo}:}
 \begin{itemize}
-    \item \textit{Hiện tượng:} Cấu trúc \texttt{struct sysinfo} theo yêu cầu có kích thước $\approx 38.25\text{ KB}$ ($100$ files và $64$ procs). Ngăn xếp kernel của mỗi tiến trình trong xv6 chỉ có đúng $4\text{ KB}$ kèm một guard page không hợp lệ bao quanh. Việc khai báo trực tiếp \texttt{struct sysinfo} trên kernel stack khiến con trỏ \texttt{sp} tràn ra ngoài vùng hợp lệ, gây panic kernel trap ngay lập tức.
+    \item \textit{Hiện tượng:} Cấu trúc \texttt{struct sysinfo} theo yêu cầu có kích thước $\approx 38.5\text{ KB}$ ($100$ files và $64$ procs). Ngăn xếp kernel của mỗi tiến trình trong xv6 chỉ có đúng $4\text{ KB}$ kèm một guard page không hợp lệ bao quanh. Việc khai báo trực tiếp \texttt{struct sysinfo} trên kernel stack khiến con trỏ \texttt{sp} tràn ra ngoài vùng hợp lệ, gây panic kernel trap ngay lập tức.
     \item \textit{Phương án tĩnh (\texttt{static}):} Đặt biến tĩnh toàn cục trong BSS giúp tránh tràn stack nhưng gây xung đột nghiêm trọng (race condition) khi nhiều CPU cùng gọi \texttt{sysinfo()}, đòi hỏi khóa đồng bộ lớn gây nghẽn hiệu năng.
     \item \textit{Phương án cấp phát \texttt{kalloc()}:} Hàm \texttt{kalloc()} của xv6 chỉ cấp phát từng trang đơn lẻ ($4096$ bytes), không hỗ trợ cấp phát nhiều trang liên tục ($\approx 10$ trang liên tiếp) nếu không sửa đổi sâu bộ quản lý trang.
-    \item \textit{Giải pháp thành công:} Áp dụng chiến lược Streaming Copyout: chỉ dùng biến cục bộ cho từng phần tử \texttt{struct sysinfo\_proc sproc} ($160$ bytes). Mỗi tiến trình hợp lệ sau khi thu thập được lập tức sao chép ra user space bằng \texttt{copyout()} tại offset \texttt{\_\_builtin\_offsetof(struct sysinfo, procs) + count * sizeof(struct sysinfo\_proc)}, an toàn tuyệt đối về bộ nhớ.
+    \item \textit{Giải pháp thành công:} Áp dụng chiến lược Streaming Copyout: chỉ dùng biến cục bộ cho từng phần tử \texttt{struct sysinfo\_proc sproc} ($164$ bytes). Mỗi tiến trình hợp lệ sau khi thu thập được lập tức sao chép ra user space bằng \texttt{copyout()} tại offset \texttt{\_\_builtin\_offsetof(struct sysinfo, procs) + count * sizeof(struct sysinfo\_proc)}, an toàn tuyệt đối về bộ nhớ.
 \end{itemize}
 
 \item \textbf{Nguy cơ Deadlock vòng tròn do đảo thứ tự lấy khóa (\textit{Lock Ordering}):}
