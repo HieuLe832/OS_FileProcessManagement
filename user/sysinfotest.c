@@ -653,6 +653,10 @@ test_zombie(void)
     exit(7);
 
   ok = waitstate(&after, pid, ZOMBIE);
+  // The file list of that snapshot may predate the child's exit(),
+  // so take a fresh one now that the zombie can no longer change.
+  if(ok)
+    snap(&after);
   print_procs(&after);
   checkst("state of exited child before wait()", stateof(&after, pid), ZOMBIE);
   cp = findproc(&after, pid);
