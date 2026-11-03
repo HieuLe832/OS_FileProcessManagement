@@ -3,81 +3,20 @@
 \subsubsection{Cài đặt bộ đếm sự kiện lập lịch (\texttt{nsched})}
 \begin{itemize}
     \item \textbf{Khai báo trường:} Trường \texttt{int nsched;} được bổ sung vào \texttt{struct proc} (\texttt{kernel/proc.h}) trong nhóm các trường dữ liệu được bảo vệ bởi khóa \texttt{p->lock}.
-    \item \textbf{Khởi tạo:} Trong hàm \texttt{allocproc()} (\texttt{kernel/proc.c}), ngay sau khi slot tiến trình được gán trạng thái \texttt{USED}, biến được khởi tạo về $0$:
-    \begin{lstlisting}[language=C]
-    found:
-      p->pid = allocpid();
-      p->state = USED;
-      p->nsched = 0;
-    \end{lstlisting}
-    \item \textbf{Tăng giá trị:} Trong hàm \texttt{scheduler()} (\texttt{kernel/proc.c}), ngay trước lệnh \texttt{swtch(\&c->context, \&p->context)}, ta thực hiện tăng bộ đếm:
-    \begin{lstlisting}[language=C]
-      if(p->state == RUNNABLE) {
-        p->state = RUNNING;
-        c->proc = p;
-        p->nsched++; // Tang so lan duoc scheduler chon chay
-        swtch(&c->context, &p->context);
-    \end{lstlisting}
+    \item \textbf{Khởi tạo:} Trong hàm \texttt{allocproc()} (\texttt{kernel/proc.c}), ngay sau khi slot tiến trình được cấp pid và gán trạng thái \texttt{USED}, \texttt{p->nsched} được khởi tạo về $0$.
+    \item \textbf{Tăng giá trị:} Trong hàm \texttt{scheduler()} (\texttt{kernel/proc.c}), khi chọn được một tiến trình \texttt{RUNNABLE}, sau khi đặt trạng thái \texttt{RUNNING} và \texttt{c->proc = p}, ta tăng \texttt{p->nsched} ngay trước lệnh \texttt{swtch(\&c->context, \&p->context)}.
     \item \textbf{Tính an toàn đồng bộ:} Thao tác tăng \texttt{p->nsched++} diễn ra khi CPU đang nắm giữ \texttt{p->lock}, do đó không bao giờ xảy ra race condition giữa các CPU khi cùng quan sát tiến trình.
 \end{itemize}
 
 \subsubsection{Cài đặt hàm thu thập \texttt{proccollect()}}
-Hàm \texttt{int proccollect(uint64 addr)} có nhiệm vụ duyệt qua toàn bộ bảng \texttt{proc[0 \dots NPROC-1]}, thu thập các tiến trình có trạng thái khác \texttt{UNUSED}, và ghi dữ liệu ra không gian người dùng tại địa chỉ \texttt{addr}.
-
-\begin{lstlisting}[language=C]
-int
-proccollect(uint64 addr)
-{
-  struct proc *p;
-  struct sysinfo_proc sproc;
-  int count = 0;
-  struct proc *curproc = myproc();
-
-  for(p = proc; p < &proc[NPROC]; p++){
-    acquire(&wait_lock);
-    acquire(&p->lock);
-
-    if(p->state == UNUSED){
-      release(&p->lock);
-      release(&wait_lock);
-      continue;
-    }
-
-    memset(&sproc, 0, sizeof(sproc));
-    sproc.pid = p->pid;
-    sproc.state = p->state;
-    sproc.nsched = p->nsched;
-    safestrcpy(sproc.name, p->name, sizeof(sproc.name));
-
-    if(p->parent)
-      sproc.ppid = p->parent->pid;
-    else
-      sproc.ppid = 0;
-
-    int nfd = 0;
-    for(int fd = 0; fd < NOFILE; fd++){
-      if(p->ofile[fd]){
-        sproc.fds[nfd] = fd;
-        sproc.fidx[nfd] = fileidx(p->ofile[fd]);
-        nfd++;
-      }
-    }
-    sproc.nfd = nfd;
-
-    release(&p->lock);
-    release(&wait_lock);
-
-    uint64 dst = addr + __builtin_offsetof(struct sysinfo, procs) 
-                      + (uint64)count * sizeof(struct sysinfo_proc);
-    if(copyout(curproc->pagetable, dst, (char *)&sproc, sizeof(sproc)) < 0)
-      return -1;
-
-    count++;
-  }
-
-  return count;
-}
-\end{lstlisting}
+Hàm \texttt{int proccollect(uint64 addr)} có nhiệm vụ duyệt qua toàn bộ bảng \texttt{proc[0 \dots NPROC-1]}, thu thập các tiến trình có trạng thái khác \texttt{UNUSED}, và ghi dữ liệu ra không gian người dùng tại địa chỉ \texttt{addr}. Với mỗi ô \texttt{p} của \texttt{proc[]}:
+\begin{enumerate}
+    \item Lấy \texttt{wait\_lock} rồi \texttt{p->lock} (đúng thứ tự khóa của xv6, xem mục 4.3.3). Nếu \texttt{p} là \texttt{UNUSED} thì nhả hai khóa và bỏ qua.
+    \item Xóa biến cục bộ \texttt{sproc} bằng \texttt{memset}, chép \texttt{pid}, \texttt{state}, \texttt{nsched}, \texttt{name}; \texttt{ppid} lấy từ \texttt{p->parent->pid}, hoặc bằng 0 nếu không có cha.
+    \item Duyệt \texttt{ofile[]}: với mỗi fd đang mở, ghi số fd vào \texttt{fds} và \texttt{fileidx(ofile[fd])} vào \texttt{fidx}; \texttt{nfd} là số fd tìm được.
+    \item Nhả \texttt{p->lock} và \texttt{wait\_lock}, rồi \texttt{copyout} biến \texttt{sproc} vào phần tử thứ \texttt{count} của mảng \texttt{procs} ở phía user và tăng \texttt{count}; nếu \texttt{copyout} lỗi thì trả về $-1$.
+\end{enumerate}
+Cuối cùng hàm trả về \texttt{count}, chính là số process khác \texttt{UNUSED}.
 
 \subsubsection{Các giải pháp kỹ thuật cốt lõi trong \texttt{proccollect}}
 \begin{enumerate}

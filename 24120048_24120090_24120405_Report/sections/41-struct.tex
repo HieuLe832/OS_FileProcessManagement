@@ -1,36 +1,31 @@
 \subsubsection{Cấu trúc dữ liệu \texttt{struct sysinfo}}
 
-Để cung cấp bức tranh toàn diện và chính xác về trạng thái quản lý tập tin và tiến trình trong hệ điều hành xv6, cấu trúc \texttt{struct sysinfo} cùng các cấu trúc con được định nghĩa trong \texttt{kernel/sysinfo.h} theo chuẩn thiết kế đã thống nhất giữa các thành viên:
+Để cung cấp bức tranh toàn diện và chính xác về trạng thái quản lý tập tin và tiến trình trong hệ điều hành xv6, cấu trúc \texttt{struct sysinfo} cùng các cấu trúc con được định nghĩa trong \texttt{kernel/sysinfo.h} theo chuẩn thiết kế đã thống nhất giữa các thành viên (Bảng~\ref{tab:sysinfo}). Process và file được nối với nhau qua chỉ số trong \texttt{ftable}: fd thứ $k$ của một process trỏ tới file có \texttt{idx} bằng \texttt{fidx[}$k$\texttt{]}.
 
-\begin{lstlisting}[language=C]
-struct sysinfo_file {
-  int idx;          // Vi tri trong ftable.file[] (dung de noi voi process)
-  int type;         // FD_NONE / FD_PIPE / FD_INODE / FD_DEVICE
-  int readable;
-  int writable;
-  int ref;          // Reference count
-  int npids;
-  int pids[NPROC];  // Danh sach cac PID dang co fd tro toi file nay
-};
-
-struct sysinfo_proc {
-  int pid;
-  int state;        // Gia tri enum procstate
-  int ppid;         // 0 neu khong co parent (initproc)
-  int nsched;       // So lan duoc scheduler chon chay
-  char name[16];
-  int nfd;
-  int fds[NOFILE];  // So thu tu file descriptor (0..15)
-  int fidx[NOFILE]; // Chi so file tuong ung trong ftable (khop voi sysinfo_file.idx)
-};
-
-struct sysinfo {
-  int nfile;
-  struct sysinfo_file files[NFILE];
-  int nproc;
-  struct sysinfo_proc procs[NPROC];
-};
-\end{lstlisting}
+\begin{table}[H]
+\centering
+\begin{tabularx}{\textwidth}{|l|>{\raggedright\arraybackslash}X|}
+\hline
+\textbf{Trường} & \textbf{Ý nghĩa} \\ \hline
+\multicolumn{2}{|l|}{\textbf{\texttt{struct sysinfo}}} \\ \hline
+\texttt{nfile}, \texttt{files[NFILE]} & Số file đang mở trong toàn hệ thống và danh sách của chúng \\ \hline
+\texttt{nproc}, \texttt{procs[NPROC]} & Số process có trạng thái khác \texttt{UNUSED} và danh sách của chúng \\ \hline
+\multicolumn{2}{|l|}{\textbf{\texttt{struct sysinfo\_file}}: một file đang mở} \\ \hline
+\texttt{idx} & Vị trí trong \texttt{ftable.file[]}, dùng để nối với process \\ \hline
+\texttt{type} & Loại file: \texttt{FD\_PIPE}, \texttt{FD\_INODE} hoặc \texttt{FD\_DEVICE} \\ \hline
+\texttt{readable}, \texttt{writable} & Chế độ mở \\ \hline
+\texttt{ref} & Reference count \\ \hline
+\texttt{npids}, \texttt{pids[NPROC]} & Các process có ít nhất một fd trỏ tới file này \\ \hline
+\multicolumn{2}{|l|}{\textbf{\texttt{struct sysinfo\_proc}}: một process} \\ \hline
+\texttt{pid}, \texttt{state} & pid và trạng thái (giá trị của \texttt{enum procstate}) \\ \hline
+\texttt{ppid} & pid của cha, bằng 0 nếu không có cha (\texttt{init}) \\ \hline
+\texttt{nsched} & Số lần được scheduler chọn chạy \\ \hline
+\texttt{name[16]} & Tên process \\ \hline
+\texttt{nfd}, \texttt{fds[NOFILE]}, \texttt{fidx[NOFILE]} & Số fd đang mở, các số fd, và \texttt{idx} của file mà mỗi fd trỏ tới \\ \hline
+\end{tabularx}
+\caption{Các trường của \texttt{struct sysinfo}}
+\label{tab:sysinfo}
+\end{table}
 
 \subsubsection{Thách thức về Kích thước Ngăn xếp Kernel và Giải pháp \texttt{copyout} từng phần tử}
 
@@ -52,12 +47,7 @@ struct sysinfo {
 \begin{itemize}
     \item Trong kernel, tuyệt đối \textbf{không} khai báo toàn bộ cấu trúc \texttt{struct sysinfo} trên ngăn xếp.
     \item Thay vào đó, kernel chỉ khai báo \textbf{duy nhất một phần tử} cục bộ (\texttt{struct sysinfo\_file sf} $\approx 280$ bytes trong \texttt{filecollect}, hoặc \texttt{struct sysinfo\_proc sp} $\approx 164$ bytes trong \texttt{proccollect}) trên stack tại mỗi vòng lặp.
-    \item Ngay sau khi trích xuất và chuẩn bị xong dữ liệu cho phần tử thứ $k$, kernel sử dụng hàm \texttt{copyout()} để sao chép trực tiếp phần tử đó vào đúng vị trí đích trên không gian địa chỉ ảo của tiến trình người dùng tại:
-    \begin{lstlisting}[language=C]
-    uint64 dst = addr + __builtin_offsetof(struct sysinfo, files) 
-                      + (uint64)count * sizeof(struct sysinfo_file);
-    copyout(p->pagetable, dst, (char *)&sf, sizeof(sf));
-    \end{lstlisting}
+    \item Ngay sau khi trích xuất và chuẩn bị xong dữ liệu cho phần tử thứ $k$, kernel sử dụng hàm \texttt{copyout()} để sao chép trực tiếp phần tử đó vào đúng vị trí đích trên không gian địa chỉ ảo của tiến trình người dùng. Với mảng \texttt{files}, vị trí đó là \texttt{addr} cộng offset của trường \texttt{files} trong \texttt{struct sysinfo} (tính bằng \texttt{\_\_builtin\_offsetof}) cộng $k \times$ \texttt{sizeof(struct sysinfo\_file)}; mảng \texttt{procs} tính tương tự.
     \item Ở phía chương trình người dùng (\texttt{sysinfotest.c}), do ngăn xếp user cũng chỉ có 1 trang (4KB), biến \texttt{struct sysinfo} bắt buộc phải được khai báo ở phạm vi \textbf{toàn cục} (được lưu tại phân vùng BSS/DATA) hoặc cấp phát động qua \texttt{malloc()}, không được để làm biến cục bộ trong hàm.
 \end{itemize}
 

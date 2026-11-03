@@ -3,15 +3,8 @@ Lời gọi hệ thống \texttt{open()} là một trong những syscall phức 
 \subsubsection{Từ User Space đến Kernel Entry}
 
 \begin{enumerate}
-    \item \textbf{Khởi tạo từ chương trình người dùng}: Chương trình thực hiện lời gọi hàm thư viện:
-    \begin{lstlisting}[language=C]
-    int fd = open("test.txt", O_CREATE | O_RDWR);
-    \end{lstlisting}
-    \item \textbf{User Trap Stub (\texttt{user/usys.S})}: Đoạn mã hợp ngữ được sinh tự động bởi \texttt{usys.pl} nạp số hiệu syscall vào thanh ghi \texttt{a7} và kích hoạt ngắt mềm:
-    \begin{lstlisting}
-    li a7, SYS_open   # SYS_open = 15 (kernel/syscall.h)
-    ecall             # Chuyen dac quyen tu U-mode sang S-mode
-    \end{lstlisting}
+    \item \textbf{Khởi tạo từ chương trình người dùng}: Chương trình gọi hàm thư viện \texttt{open(path, omode)}, ví dụ mở \texttt{test.txt} với cờ \texttt{O\_CREATE | O\_RDWR}.
+    \item \textbf{User Trap Stub (\texttt{user/usys.S})}: Đoạn mã hợp ngữ được sinh tự động bởi \texttt{usys.pl} nạp số hiệu \texttt{SYS\_open} (bằng 15, \texttt{kernel/syscall.h}) vào thanh ghi \texttt{a7} rồi thực hiện lệnh \texttt{ecall} để chuyển từ U-mode sang S-mode.
     \item \textbf{Trampoline và Trap Handling (\texttt{kernel/trampoline.S} và \texttt{kernel/trap.c})}:
     \begin{itemize}
         \item Lệnh \texttt{ecall} chuyển CPU sang Supervisor mode, lưu địa chỉ kế tiếp vào thanh ghi \texttt{sepc} và nhảy đến địa chỉ vector ngắt tại trang \texttt{trampoline}.
@@ -59,11 +52,7 @@ Toàn bộ logic cốt lõi của việc mở tập tin diễn ra trong hàm \te
         \item Thiết lập kiểu: $\texttt{f->type} = \texttt{FD\_DEVICE}$ (nếu là thiết bị) hoặc $\texttt{FD\_INODE}$ (nếu là tệp thường).
         \item Đặt con trỏ offset ban đầu: $\texttt{f->off} = 0$.
         \item Gán con trỏ inode: $\texttt{f->ip} = \texttt{ip}$.
-        \item Thiết lập quyền đọc/ghi:
-        \begin{lstlisting}[language=C]
-        f->readable = !(omode & O_WRONLY);
-        f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
-        \end{lstlisting}
+        \item Thiết lập quyền: \texttt{readable} bằng 1 khi \texttt{omode} không có \texttt{O\_WRONLY}; \texttt{writable} bằng 1 khi \texttt{omode} có \texttt{O\_WRONLY} hoặc \texttt{O\_RDWR}.
     \end{itemize}
     \item \textbf{Xử lý cờ \texttt{O\_TRUNC}}:
     \begin{itemize}
@@ -84,16 +73,7 @@ Tính toàn vẹn của hệ điều hành đòi hỏi mọi nhánh lỗi đều
 \begin{itemize}
     \item \textbf{Lỗi phân giải Inode / Tạo tệp thất bại}: Nếu \texttt{create()} hoặc \texttt{namei()} trả về \texttt{0}, kernel lập tức gọi \texttt{end\_op()} để đóng giao dịch nhật ký và trả về $-1$.
     \item \textbf{Lỗi kiểm tra quyền hạn hoặc loại tệp (Thư mục mở ghi, Thiết bị không hợp lệ)}: Inode đã được khóa trước đó, do đó kernel phải gọi \texttt{iunlockput(ip)} (kết hợp giữa mở khóa \texttt{iunlock} và giảm tham chiếu \texttt{iput}), sau đó gọi \texttt{end\_op()} và trả về $-1$.
-    \item \textbf{Lỗi cạn kiệt bảng \texttt{ftable} hoặc bảng \texttt{ofile[]}}:
-    \begin{lstlisting}[language=C]
-    if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
-      if(f)
-        fileclose(f);
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
-    \end{lstlisting}
+    \item \textbf{Lỗi cạn kiệt bảng \texttt{ftable} hoặc bảng \texttt{ofile[]}}: \texttt{sys\_open} gọi \texttt{filealloc()} rồi mới gọi \texttt{fdalloc(f)}, và dùng chung một nhánh lỗi khi một trong hai thất bại.
     Đây là điểm cần lưu ý đặc biệt: Nếu \texttt{filealloc()} thành công (đã tăng $\texttt{f->ref} = 1$) nhưng \texttt{fdalloc(f)} thất bại (tiến trình đã mở đủ 16 tập tin), kernel phải gọi ngay \texttt{fileclose(f)} để hoàn trả ô nhớ trong \texttt{ftable}, tránh rò rỉ ô tập tin toàn cục. Tiếp theo, gọi \texttt{iunlockput(ip)} và \texttt{end\_op()} trước khi trả về $-1$.
 \end{itemize}
 

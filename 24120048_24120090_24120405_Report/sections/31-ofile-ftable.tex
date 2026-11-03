@@ -2,11 +2,7 @@ Trong hệ điều hành xv6, việc quản lý tập tin được tổ chức t
 
 \subsubsection{Bảng tập tin cục bộ của tiến trình: \texttt{ofile[]}}
 
-Mỗi tiến trình trong xv6 được đại diện bởi một \texttt{struct proc} (được định nghĩa trong \texttt{kernel/proc.h}). Bên trong cấu trúc này, mảng \texttt{ofile} quản lý danh sách các tập tin mà tiến trình đang mở:
-
-\begin{lstlisting}[language=C]
-struct file *ofile[NOFILE];  // Open files
-\end{lstlisting}
+Mỗi tiến trình trong xv6 được đại diện bởi một \texttt{struct proc} (được định nghĩa trong \texttt{kernel/proc.h}). Bên trong cấu trúc này, mảng \texttt{ofile[NOFILE]} gồm các con trỏ \texttt{struct file *} quản lý danh sách các tập tin mà tiến trình đang mở.
 
 \begin{itemize}
     \item \textbf{Ý nghĩa của file descriptor (\texttt{fd})}: Chỉ số nguyên $0 \le \texttt{fd} < \texttt{NOFILE}$ của mảng chính là giá trị file descriptor mà tiến trình người dùng nhận được khi thực hiện các lời gọi hệ thống như \texttt{open()}, \texttt{dup()}, hoặc \texttt{pipe()}. Theo quy ước POSIX, $\texttt{fd} = 0$ là đầu vào chuẩn (standard input), $\texttt{fd} = 1$ là đầu ra chuẩn (standard output), và $\texttt{fd} = 2$ là đầu ra lỗi chuẩn (standard error).
@@ -16,14 +12,7 @@ struct file *ofile[NOFILE];  // Open files
 
 \subsubsection{Bảng tập tin toàn cục của hệ thống: \texttt{ftable}}
 
-Trái ngược với \texttt{ofile[]} mang tính cục bộ, \texttt{ftable} là bảng quản lý tất cả các đối tượng tập tin đang mở trên toàn bộ hệ điều hành xv6, được khai báo dạng cấu trúc ẩn danh trong \texttt{kernel/file.c}:
-
-\begin{lstlisting}[language=C]
-struct {
-  struct spinlock lock;
-  struct file file[NFILE];
-} ftable;
-\end{lstlisting}
+Trái ngược với \texttt{ofile[]} mang tính cục bộ, \texttt{ftable} là bảng quản lý tất cả các đối tượng tập tin đang mở trên toàn bộ hệ điều hành xv6, được khai báo dạng cấu trúc ẩn danh trong \texttt{kernel/file.c}, gồm một spinlock \texttt{lock} và mảng \texttt{file[NFILE]} các \texttt{struct file}.
 
 \begin{itemize}
     \item \textbf{Ý nghĩa}: Bảng \texttt{ftable.file[]} đóng vai trò là kho lưu trữ tập trung cho mọi tập tin đang mở của hệ thống. Bảng này dùng chung cho tất cả các tiến trình và được bảo vệ bởi khóa \texttt{ftable.lock} để đảm bảo an toàn truy cập đồng thời trong môi trường đa nhân (SMP).
@@ -33,20 +22,7 @@ struct {
 
 \subsubsection{Chi tiết cấu trúc \texttt{struct file}}
 
-Cấu trúc \texttt{struct file} (\texttt{kernel/file.h}) chứa toàn bộ siêu dữ liệu mô tả trạng thái của một tập tin đang mở:
-
-\begin{lstlisting}[language=C]
-struct file {
-  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
-  int ref;            // reference count
-  char readable;      // cho phep doc (1) hoac khong (0)
-  char writable;      // cho phep ghi (1) hoac khong (0)
-  struct pipe *pipe;  // con tro pipe neu type == FD_PIPE
-  struct inode *ip;   // con tro inode neu type == FD_INODE / FD_DEVICE
-  uint off;           // vi tri doc/ghi hien tai (offset)
-  short major;        // chi so thiet bi neu type == FD_DEVICE
-};
-\end{lstlisting}
+Cấu trúc \texttt{struct file} (\texttt{kernel/file.h}) chứa toàn bộ siêu dữ liệu mô tả trạng thái của một tập tin đang mở, gồm các trường sau:
 
 \begin{itemize}
     \item \texttt{type}: Xác định bản chất tài nguyên mà cấu trúc này đại diện:

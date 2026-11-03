@@ -2,57 +2,13 @@ Phần thu thập thông tin về các tập tin đang mở trên hệ thống �
 
 \subsubsection{Cài đặt hàm \texttt{fileidx()}}
 
-Hàm \texttt{fileidx()} được bổ sung vào \texttt{kernel/file.c} nhằm ánh xạ từ con trỏ \texttt{struct file *f} sang chỉ số nguyên trong bảng \texttt{ftable.file[]}:
-
-\begin{lstlisting}[language=C]
-int
-fileidx(struct file *f)
-{
-  if(f < ftable.file || f >= ftable.file + NFILE)
-    return -1;
-  return (int)(f - ftable.file);
-}
-\end{lstlisting}
+Hàm \texttt{fileidx()} được bổ sung vào \texttt{kernel/file.c} nhằm ánh xạ từ con trỏ \texttt{struct file *f} sang chỉ số nguyên trong bảng \texttt{ftable.file[]}: hàm trả về \texttt{f - ftable.file}, hoặc $-1$ nếu \texttt{f} không nằm trong bảng.
 
 Hàm này cho phép thành viên phụ trách phần Process (thành viên C) khi duyệt qua mảng \texttt{ofile[]} của tiến trình có thể dễ dàng chuyển đổi con trỏ tập tin thành một chỉ số định danh thống nhất (\texttt{fidx}), từ đó liên kết chính xác giữa tiến trình và tập tin tương ứng trong báo cáo \texttt{sysinfo}.
 
 \subsubsection{Cài đặt hàm tra cứu tiến trình \texttt{procs\_using\_file()}}
 
-Để xác định những tiến trình nào đang mở một tập tin \texttt{f}, hàm \texttt{procs\_using\_file()} được cài đặt trong \texttt{kernel/proc.c} (nơi nắm giữ mảng toàn cục \texttt{proc[NPROC]}):
-
-\begin{lstlisting}[language=C]
-int
-procs_using_file(struct file *f, int *pids)
-{
-  struct proc *p;
-  int npids = 0;
-
-  if(f == 0 || pids == 0)
-    return 0;
-
-  for(p = proc; p < &proc[NPROC]; p++){
-    acquire(&p->lock);
-    if(p->state != UNUSED){
-      int pid = p->pid;
-      int found = 0;
-      for(int fd = 0; fd < NOFILE; fd++){
-        if(p->ofile[fd] == f){
-          found = 1;
-          break;
-        }
-      }
-      release(&p->lock);
-      if(found){
-        pids[npids++] = pid;
-      }
-    } else {
-      release(&p->lock);
-    }
-  }
-
-  return npids;
-}
-\end{lstlisting}
+Để xác định những tiến trình nào đang mở một tập tin \texttt{f}, hàm \texttt{procs\_using\_file(f, pids)} được cài đặt trong \texttt{kernel/proc.c} (nơi nắm giữ mảng toàn cục \texttt{proc[NPROC]}). Hàm duyệt \texttt{proc[]}; với mỗi tiến trình khác \texttt{UNUSED}, hàm giữ \texttt{p->lock} trong lúc quét \texttt{ofile[]} tìm ô trỏ tới \texttt{f}, nhả khóa rồi mới ghi pid vào mảng \texttt{pids}. Hàm trả về số pid tìm được.
 
 \textbf{Các điểm kỹ thuật quan trọng}:
 \begin{itemize}
@@ -63,44 +19,14 @@ procs_using_file(struct file *f, int *pids)
 
 \subsubsection{Cài đặt hàm thu thập chính \texttt{filecollect()}}
 
-Hàm \texttt{filecollect()} trong \texttt{kernel/file.c} duyệt qua toàn bộ bảng \texttt{ftable} và sao chép thông tin từng tập tin vào không gian người dùng:
-
-\begin{lstlisting}[language=C]
-int
-filecollect(uint64 addr)
-{
-  struct proc *p = myproc();
-  struct sysinfo_file sf;
-  int count = 0;
-
-  for(int i = 0; i < NFILE; i++){
-    acquire(&ftable.lock);
-    if(ftable.file[i].ref > 0){
-      memset(&sf, 0, sizeof(sf));
-      sf.idx = i;
-      sf.type = ftable.file[i].type;
-      sf.readable = ftable.file[i].readable;
-      sf.writable = ftable.file[i].writable;
-      sf.ref = ftable.file[i].ref;
-      release(&ftable.lock);
-
-      // Thu thap pids ma khong giu ftable.lock de tranh deadlock
-      sf.npids = procs_using_file(&ftable.file[i], sf.pids);
-
-      uint64 dst = addr + __builtin_offsetof(struct sysinfo, files) 
-                        + (uint64)count * sizeof(struct sysinfo_file);
-      if(copyout(p->pagetable, dst, (char *)&sf, sizeof(sf)) < 0)
-        return -1;
-
-      count++;
-    } else {
-      release(&ftable.lock);
-    }
-  }
-
-  return count;
-}
-\end{lstlisting}
+Hàm \texttt{filecollect(addr)} trong \texttt{kernel/file.c} duyệt qua toàn bộ bảng \texttt{ftable} và sao chép thông tin từng tập tin vào không gian người dùng. Với mỗi ô thứ $i$ của \texttt{ftable.file[]}:
+\begin{enumerate}
+    \item Lấy \texttt{ftable.lock}. Nếu ô có \texttt{ref == 0} thì nhả khóa và bỏ qua ô này.
+    \item Xóa biến cục bộ \texttt{sf} bằng \texttt{memset}, chép \texttt{idx = i}, \texttt{type}, \texttt{readable}, \texttt{writable}, \texttt{ref} vào \texttt{sf}, rồi nhả \texttt{ftable.lock}.
+    \item Gọi \texttt{procs\_using\_file()} để điền \texttt{npids} và \texttt{pids} (lúc này không còn giữ \texttt{ftable.lock}).
+    \item \texttt{copyout} biến \texttt{sf} vào phần tử thứ \texttt{count} của mảng \texttt{files} ở phía user rồi tăng \texttt{count}; nếu \texttt{copyout} lỗi thì trả về $-1$.
+\end{enumerate}
+Cuối cùng hàm trả về \texttt{count}, chính là số file đang mở.
 
 \subsubsection{Chiến lược đồng bộ, Xử lý Concurrency và Phòng ngừa Deadlock}
 
