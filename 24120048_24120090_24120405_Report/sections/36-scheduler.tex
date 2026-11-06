@@ -6,6 +6,22 @@ Mỗi CPU có một kernel thread riêng chạy \texttt{scheduler()} (\texttt{ke
     \item Duyệt hết bảng mà không có process nào để chạy thì thực hiện lệnh \texttt{wfi} để chờ ngắt.
 \end{enumerate}
 
+\begin{lstlisting}[style=xv6code]
+// kernel/proc.c, scheduler(): inside for(;;), after intr_on()
+for(p = proc; p < &proc[NPROC]; p++) {
+  acquire(&p->lock);
+  if(p->state == RUNNABLE) {
+    p->state = RUNNING;
+    c->proc = p;
+    p->nsched++;                      // added by the group (section 4.3)
+    swtch(&c->context, &p->context);  // runs p; returns when p calls sched()
+    c->proc = 0;
+    found = 1;
+  }
+  release(&p->lock);
+}
+\end{lstlisting}
+
 \textbf{\texttt{sched()}} là đường duy nhất để một process trả CPU về scheduler: nó gọi \texttt{swtch(\&p->context, \&mycpu()->context)}, có lưu và khôi phục \texttt{intena} của CPU. Trước đó hàm kiểm tra bốn điều kiện, sai điều nào thì \texttt{panic}:
 \begin{itemize}
     \item Phải đang giữ \texttt{p->lock}, để CPU khác không chọn chạy \texttt{p} khi \texttt{p} chưa lưu xong context.
@@ -15,5 +31,32 @@ Mỗi CPU có một kernel thread riêng chạy \texttt{scheduler()} (\texttt{ke
 \end{itemize}
 
 \textbf{\texttt{yield()}} lấy \texttt{p->lock}, đặt \texttt{RUNNABLE} rồi gọi \texttt{sched()}; khi được chạy lại thì nhả khóa. \texttt{usertrap()} và \texttt{kerneltrap()} gọi \texttt{yield()} mỗi khi gặp ngắt timer (\texttt{which\_dev == 2}), nên một process chạy vòng lặp vô hạn vẫn bị lấy lại CPU sau mỗi tick.
+
+\begin{lstlisting}[style=xv6code]
+// kernel/proc.c
+void sched(void) {
+  int intena;
+  struct proc *p = myproc();
+  if(!holding(&p->lock))   panic("sched p->lock");
+  if(mycpu()->noff != 1)   panic("sched locks");
+  if(p->state == RUNNING)  panic("sched running");
+  if(intr_get())           panic("sched interruptible");
+  intena = mycpu()->intena;
+  swtch(&p->context, &mycpu()->context);
+  mycpu()->intena = intena;
+}
+
+void yield(void) {
+  struct proc *p = myproc();
+  acquire(&p->lock);
+  p->state = RUNNABLE;
+  sched();
+  release(&p->lock);
+}
+
+// kernel/trap.c, usertrap() (kerneltrap() also checks myproc() != 0)
+if(which_dev == 2)        // timer interrupt
+  yield();
+\end{lstlisting}
 
 \textbf{\texttt{p->lock} được giữ qua \texttt{swtch}.} Khóa này được lấy ở một thread và nhả ở thread khác. Scheduler lấy \texttt{p->lock} rồi chuyển sang \texttt{p}, và chính \texttt{p} nhả khóa (trong \texttt{yield()}, \texttt{sleep()}, hoặc \texttt{forkret()} nếu là lần chạy đầu). Ngược lại, \texttt{p} lấy khóa trước khi gọi \texttt{sched()}, và scheduler nhả nó sau khi \texttt{swtch} quay về. Nhờ vậy trạng thái của \texttt{p} được bảo vệ suốt quá trình chuyển, không CPU nào chen vào giữa được.

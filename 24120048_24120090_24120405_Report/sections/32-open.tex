@@ -11,4 +11,29 @@
     \item \texttt{iunlock()} (inode vẫn được giữ qua \texttt{f->ip}), \texttt{end\_op()}, trả về \texttt{fd}. \texttt{syscall()} ghi giá trị này vào \texttt{trapframe->a0}, là giá trị trả về mà chương trình user nhận được.
 \end{enumerate}
 
+\begin{lstlisting}[style=xv6code]
+// kernel/sysfile.c, sys_open(): after the inode ip is found and locked
+if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+  if(f)
+    fileclose(f);       // got a struct file but no free fd: give it back
+  iunlockput(ip);
+  end_op();
+  return -1;
+}
+if(ip->type == T_DEVICE){
+  f->type = FD_DEVICE;
+  f->major = ip->major;
+} else {
+  f->type = FD_INODE;
+  f->off = 0;
+}
+f->ip = ip;
+f->readable = !(omode & O_WRONLY);
+f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+...
+iunlock(ip);
+end_op();
+return fd;
+\end{lstlisting}
+
 \textbf{Đường lỗi.} Bước nào lỗi cũng trả về $-1$ sau khi hoàn tác những gì đã làm. Chưa có inode thì chỉ cần \texttt{end\_op()}; đã khóa inode (thư mục mở để ghi, thiết bị sai) thì \texttt{iunlockput()} rồi \texttt{end\_op()}. Đáng chú ý nhất là khi \texttt{filealloc()} thành công nhưng \texttt{fdalloc()} thất bại vì process đã dùng hết 16 fd: kernel phải \texttt{fileclose(f)} để trả lại ô trong \texttt{ftable}, nếu không ô đó bị mất vĩnh viễn.

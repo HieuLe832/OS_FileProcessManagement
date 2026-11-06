@@ -4,6 +4,7 @@ Báo cáo trên nhánh `latex` đã được rút gọn. Các bản dài hơn v�
 
 | Commit | Số trang | Nội dung |
 |---|---|---|
+| `655128c` | 16 | Bản rút gọn, mục 3 chỉ có chữ. Bản hiện tại (18 trang) thêm vào mục 3 các đoạn trích ngắn từ mã nguồn xv6. |
 | `aba5e79` | 32 | Bản dài, ngay trước khi rút gọn. Đã bỏ code khỏi báo cáo và sửa lỗi trình bày. PDF có sẵn trong commit. |
 | `bdcdda8` | 37 | Bản dài nhất, mục 3 và 4 còn nguyên các đoạn code. PDF không có trong commit, phải compile lại. |
 

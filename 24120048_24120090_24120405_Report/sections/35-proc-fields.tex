@@ -1,5 +1,34 @@
 Mỗi process là một \texttt{struct proc} (\texttt{kernel/proc.h}) trong bảng \texttt{proc[NPROC]}, với \texttt{NPROC} = 64.
 
+\needspace{12\baselineskip}
+\begin{lstlisting}[style=xv6code]
+// kernel/proc.h
+enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+
+struct proc {
+  struct spinlock lock;
+  // p->lock must be held when using these:
+  enum procstate state;        // Process state
+  int pid;                     // Process ID
+  ...
+  struct context context;      // swtch() here to run process
+  ...
+};
+
+struct context {
+  uint64 ra;
+  uint64 sp;
+  // callee-saved
+  uint64 s0;  ...  uint64 s11; // s0 .. s11, one field each
+};
+
+// kernel/proc.c, allocpid(): called from allocproc()
+acquire(&pid_lock);
+pid = nextpid;
+nextpid = nextpid + 1;
+release(&pid_lock);
+\end{lstlisting}
+
 \textbf{\texttt{pid}} được gán trong \texttt{allocproc()} bằng \texttt{allocpid()}. Hàm này tăng biến toàn cục \texttt{nextpid} dưới khóa \texttt{pid\_lock}, nên mỗi process nhận một pid riêng kể cả khi nhiều CPU cùng fork. \texttt{nextpid} chỉ tăng, pid của process đã kết thúc không được dùng lại.
 
 \textbf{\texttt{state}} nhận một trong 6 giá trị của \texttt{enum procstate}, chuyển đổi như Hình~\ref{fig:procstate}:

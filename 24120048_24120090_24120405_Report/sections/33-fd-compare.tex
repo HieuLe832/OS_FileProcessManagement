@@ -4,6 +4,27 @@ fd chỉ là chỉ số trong \texttt{ofile[]}, trỏ tới một \texttt{struct
     \item \textbf{\texttt{dup(fd)}} cấp fd mới bằng \texttt{fdalloc()}, trỏ tới \emph{chính} \texttt{struct file} của fd cũ, rồi \texttt{filedup()} tăng \texttt{ref}. Hai fd dùng chung offset và quyền đọc/ghi.
     \item \textbf{\texttt{fork()}} gán \texttt{np->ofile[i] = filedup(p->ofile[i])} cho mọi fd của cha. Con có đúng các số fd của cha, trỏ tới cùng các \texttt{struct file}, nên cha và con dùng chung offset; mỗi fd được chép làm \texttt{ref} tăng 1.
 \end{itemize}
+
+\begin{lstlisting}[style=xv6code]
+// kernel/sysfile.c, fdalloc(): used by open() and dup(), takes the lowest free slot
+for(fd = 0; fd < NOFILE; fd++){
+  if(p->ofile[fd] == 0){
+    p->ofile[fd] = f;
+    return fd;
+  }
+}
+
+// kernel/sysfile.c, sys_dup(): new fd, same struct file
+if((fd=fdalloc(f)) < 0)
+  return -1;
+filedup(f);
+
+// kernel/proc.c, fork(): same fd numbers in the child, same struct file
+for(i = 0; i < NOFILE; i++)
+  if(p->ofile[i])
+    np->ofile[i] = filedup(p->ofile[i]);
+\end{lstlisting}
+
 Chiều ngược lại, \texttt{close()} gọi \texttt{fileclose()} để giảm \texttt{ref}. Chỉ khi \texttt{ref} về 0 thì \texttt{struct file} mới được giải phóng và tài nguyên bên dưới được trả lại (\texttt{iput()} hoặc \texttt{pipeclose()}). \texttt{exit()} cũng đóng mọi fd theo cách này.
 
 \begin{table}[H]

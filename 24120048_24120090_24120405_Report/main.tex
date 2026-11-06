@@ -179,6 +179,24 @@
 	belowskip=1mm
 }
 
+% Trích đoạn mã nguồn xv6 ở mục 3: đã rút gọn ("..." là phần lược bỏ) nên không đánh số dòng,
+% giãn dòng 1.0 thay cho 1.5 của thân bài để đoạn code gọn.
+\lstdefinestyle{xv6code}{
+	language=C,
+	basicstyle=\ttfamily\scriptsize\setstretch{1},
+	backgroundcolor=\color{gray!10},
+	frame=single,
+	numbers=none,
+	columns=fixed,
+	keepspaces=true,
+	showstringspaces=false,
+	breaklines=false,
+	keywordstyle=\color{blue},
+	commentstyle=\color{dkgreen},
+	aboveskip=1mm,
+	belowskip=1mm
+}
+
 %%% Khung báo cáo: chèn tệp của từng thành viên %%%
 \newcommand{\nguoiA}{A (Đinh Tiến Phát)}
 \newcommand{\nguoiB}{B (Lê Hoàng Hiếu)}

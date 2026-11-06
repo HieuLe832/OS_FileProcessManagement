@@ -12,4 +12,24 @@ xv6 quản lý file đang mở theo ba tầng: bảng fd riêng của mỗi proc
     \item \texttt{major}: số hiệu thiết bị, dùng để tra bảng \texttt{devsw[]} khi là \texttt{FD\_DEVICE}.
 \end{itemize}
 
+\begin{lstlisting}[style=xv6code]
+struct file *ofile[NOFILE];          // kernel/proc.h, in struct proc: per-process
+
+struct {                             // kernel/file.c: system-wide
+  struct spinlock lock;
+  struct file file[NFILE];
+} ftable;
+
+struct file {                        // kernel/file.h
+  enum { FD_NONE, FD_PIPE, FD_INODE, FD_DEVICE } type;
+  int ref; // reference count
+  char readable;
+  char writable;
+  struct pipe *pipe; // FD_PIPE
+  struct inode *ip;  // FD_INODE and FD_DEVICE
+  uint off;          // FD_INODE
+  short major;       // FD_DEVICE
+};
+\end{lstlisting}
+
 Tầng giữa quyết định cái gì được dùng chung. Hai fd trỏ tới cùng một \texttt{struct file} (sau \texttt{dup} hoặc \texttt{fork}) thì dùng chung \texttt{off}. Hai lần \texttt{open} cùng một đường dẫn cho hai \texttt{struct file} khác nhau, mỗi cái có \texttt{off} riêng, nhưng cùng trỏ tới một inode.

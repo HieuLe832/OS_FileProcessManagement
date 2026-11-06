@@ -8,6 +8,30 @@
     \item \textbf{Trả về pid của con}; \texttt{syscall()} ghi giá trị này vào \texttt{a0} của cha.
 \end{enumerate}
 
+\begin{lstlisting}[style=xv6code]
+// kernel/proc.c, fork()
+if((np = allocproc()) == 0)                           // (2) returns with np->lock held
+  return -1;
+if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){  // (3)
+  freeproc(np);
+  release(&np->lock);
+  return -1;
+}
+np->sz = p->sz;
+*(np->trapframe) = *(p->trapframe);                   // (4)
+np->trapframe->a0 = 0;
+...                                                   // (5) filedup() each fd, idup(cwd), name
+pid = np->pid;
+release(&np->lock);
+acquire(&wait_lock);                                  // (6)
+np->parent = p;
+release(&wait_lock);
+acquire(&np->lock);
+np->state = RUNNABLE;
+release(&np->lock);
+return pid;                                           // (7)
+\end{lstlisting}
+
 \textbf{Vì sao cha nhận pid của con, còn con nhận 0.} Con quay về user với bản sao trapframe của cha, nên chạy tiếp từ cùng lệnh sau \texttt{ecall}; chỉ khác thanh ghi \texttt{a0} chứa giá trị trả về. \texttt{a0} của cha được \texttt{syscall()} ghi bằng pid của con, còn \texttt{a0} của con đã bị \texttt{fork()} gán 0 và con không đi qua \texttt{syscall()}.
 
 \textbf{Lần chạy đầu tiên của con.} Khi \texttt{scheduler()} chọn con, \texttt{swtch()} nạp \texttt{context} của con và lệnh \texttt{ret} nhảy tới \texttt{forkret()} (vì \texttt{ra = forkret}). \texttt{forkret()} nhả \texttt{p->lock} mà scheduler đang giữ, rồi \texttt{usertrapret()} đưa con về user mode.
