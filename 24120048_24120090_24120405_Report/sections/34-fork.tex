@@ -36,4 +36,4 @@ return pid;                                           // (7)
 
 \textbf{Lần chạy đầu tiên của con.} Khi \texttt{scheduler()} chọn con, \texttt{swtch()} nạp \texttt{context} của con và lệnh \texttt{ret} nhảy tới \texttt{forkret()} (vì \texttt{ra = forkret}). \texttt{forkret()} nhả \texttt{p->lock} mà scheduler đang giữ, rồi \texttt{usertrapret()} đưa con về user mode.
 
-Test 5 (mục 6) cho thấy ngay sau \texttt{fork}, con có \texttt{ppid} bằng pid của cha, có cùng các fd, và ở trạng thái \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được chạy lần nào.
+Test 5 (mục 6) cho thấy ngay sau \texttt{fork}, con có \texttt{ppid} bằng pid của cha và có cùng các fd. Trong lần chạy ở mục 6, con còn đang \texttt{RUNNABLE} với \texttt{nsched = 0} vì chưa được chạy lần nào; test không kiểm tra điều này, vì với nhiều CPU con có thể đã được chạy ngay.

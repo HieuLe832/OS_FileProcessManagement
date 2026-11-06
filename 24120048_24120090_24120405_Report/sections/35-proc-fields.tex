@@ -70,7 +70,7 @@ release(&pid_lock);
 \begin{tabularx}{\textwidth}{|l|>{\raggedright\arraybackslash}X|>{\raggedright\arraybackslash}X|}
 \hline
  & \textbf{\texttt{context}} & \textbf{\texttt{trapframe}} \\ \hline
-Lưu gì & \texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11} của kernel thread & Toàn bộ 32 thanh ghi user và \texttt{epc} \\ \hline
+Lưu gì & \texttt{ra}, \texttt{sp}, \texttt{s0}--\texttt{s11} của kernel thread & 31 thanh ghi user \texttt{x1}--\texttt{x31} (\texttt{x0} luôn bằng 0) và \texttt{epc} \\ \hline
 Khi nào & Chuyển giữa process và scheduler (\texttt{swtch()}) & Mỗi lần trap từ user vào kernel (\texttt{uservec}, \texttt{userret}) \\ \hline
 Nằm ở đâu & Trong \texttt{struct proc} (của scheduler thì trong \texttt{struct cpu}) & Một trang riêng, map ngay dưới trang trampoline \\ \hline
 \end{tabularx}
