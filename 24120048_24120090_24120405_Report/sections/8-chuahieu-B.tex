@@ -1,2 +1,2 @@
-% TODO(B): bản nháp, sửa lại cho đúng những điều mình thật sự chưa hiểu.
-\item \textbf{Khi nào \texttt{kill()} thật sự có hiệu lực.} \texttt{kill()} chỉ đặt \texttt{p->killed} (và đánh thức process nếu nó đang \texttt{SLEEPING}); process chỉ gọi \texttt{exit()} ở lần trap tiếp theo, khi \texttt{usertrap()} kiểm tra cờ này. Nhóm chưa rõ một process đang \texttt{RUNNING} trên CPU khác phải chờ tối đa bao lâu mới dừng, và nếu nó đang ở giữa một system call dài (ví dụ chờ đọc đĩa) thì có dừng ngay không.
+% B không có mục riêng ở phần 8 (đã bỏ ý về kill() vì không thuộc yêu cầu của đề).
+% Giữ tệp này rỗng: nếu xóa tệp, \gop sẽ in dòng nhắc "chưa có".
