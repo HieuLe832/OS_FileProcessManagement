@@ -1,1 +1,2 @@
-\item \textbf{Phần của A cần \texttt{proccollect()} của C để build được.} Trong lúc C chưa xong, A khai báo tạm một \texttt{proccollect()} dạng \texttt{\_\_attribute\_\_((weak))} trả về 0 trong \texttt{sysproc.c}, nhờ vậy vẫn build và thử được phần file. Khi ghép code, hàm thật trong \texttt{proc.c} thay thế stub, và nhóm đã xóa stub khỏi bản nộp.
+% A không có mục riêng ở phần 7 (đã bỏ ý về stub weak cho proccollect(), vì đó là chuyện chia việc, không phải khó khăn kỹ thuật).
+% Giữ tệp này rỗng: nếu xóa tệp, \gop sẽ in dòng nhắc "chưa có".
